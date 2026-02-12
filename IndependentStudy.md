@@ -6,7 +6,7 @@ _Note: The following documentation is based on hands-on implementation on an ARM
 
 - To build a Kubernetes Scheduler Plugin:
     - Clone the Kubernetes repository from GitHub.
-    - Create a new directory for your plugin under the `pkg/scheduler/framework/plugins` directory
+    - Create a new directory for the plugin under the `pkg/scheduler/framework/plugins` directory
     - Implement the necessary interfaces and logic for the plugin.
         - Required dependencies and imports:
             - `context`
@@ -18,10 +18,11 @@ _Note: The following documentation is based on hands-on implementation on an ARM
             - `k8s.io/kube-scheduler/framework`
                 - Kubernetes scheduler framework package for building scheduler plugins.
     - Add the plugin to the Kubernetes scheduler configuration, in `pkg/scheduler/framework/plugins/registry.go`.
+        - Import the plugin package and add it to the registry map with a unique name.
     - Build the Kubernetes scheduler binary with the plugin included.
         - `make WHAT=cmd/kube-scheduler KUBE_BUILD_PLATFORM=linux/arm64`.
 
-- Move the built binary to the appropriate location (into `kdapt/manifests/`), from `_output/local/bin/arm64/kube-scheduler` to `kdaptManifests/manifests/`.
+- Move the built binary to the appropriate location (into `kdaptManifests/`), from `_output/local/bin/arm64/kube-scheduler`.
 - Build and push the Docker image for the plugin, using the provided Dockerfile in `kdaptManifests/`.
     - The dockerfile is a simple linux image that copies the built kube-scheduler binary into it, along with the necessary configuration files for the plugin.
 - Deploy the plugin to the Kubernetes cluster:
@@ -58,3 +59,10 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - It instantiates the plugin via the New() constructor.
     - It passes a valid fwk.Handle to the plugin.
     - Plugin can now call framework methods safely.
+
+## Scheduler Lifecycle:
+- _Note: For each enabled plugin that implements scoring, the `New()` method is called once, when the scheduler starts up._
+- The scheduler creats a scheduling cycle for each pod that needs to be scheduled. During this cycle, the scheduler goes through stages in this order: (All enabled plugins that implement the stage are called in sequence, and the results are aggregated based on weight to make scheduling decisions.)
+    - Prefilter, Filter, Score, NormalizeScore, Reserve, Permit, PreBind, Bind, PostBind.
+- The binding cycle is a separate cycle that is responsible for binding the pod to the selected node (The last three stages mentioned above are part of the binding cycle).
+- For all the feasible nodes that pass the filtering stage, the scheduler calls the Score() method of the ScorePlugin to assign a score(between 0-100) to each node per pod. The scores are then normalized and aggregated based on the weight assigned to each plugin in the scheduler configuration. The node with the highest score is selected for scheduling the pod.

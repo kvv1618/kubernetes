@@ -7,3 +7,4 @@ profiles:
       score:
         enabled:
           - name: KdaptScheduler
+            weight: 1
