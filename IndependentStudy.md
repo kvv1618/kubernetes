@@ -29,6 +29,17 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - Apply the rbac configuration for the plugin, using `kubectl apply -f rbac.yaml`. This will create the necessary roles and role bindings for the scheduler pod in `kube-system` namespace to run with the necessary permissions.
     - Apply the deployment configuration for the plugin, using `kubectl apply -f kdaptDeployment.yaml`.
 
+## Scheduler Lifecycle:
+- _Note: For each enabled plugin that implements scoring, the `New()` method is called once, when the scheduler starts up._
+- The scheduler creats a scheduling cycle for each pod that needs to be scheduled. During this cycle, the scheduler goes through stages in this order: (All enabled plugins that implement the stage are called in sequence, and the results are aggregated based on weight to make scheduling decisions.)
+    - Prefilter, Filter, Score, NormalizeScore, Reserve, Permit, PreBind, Bind, PostBind.
+    - Refer to: https://kubernetes.io/docs/reference/scheduling/config/#extension-points
+- The binding cycle is a separate cycle that is responsible for binding the pod to the selected node (The last three stages mentioned above are part of the binding cycle).
+- For all the feasible nodes that pass the filtering stage, the scheduler calls the Score() method of the ScorePlugin to assign a score(between 0-100) to each node per pod. The scores are then normalized and aggregated based on the weight assigned to each plugin in the scheduler configuration. The node with the highest score is selected for scheduling the pod.
+
+## Default K8s Scheduling:
+- The default enabled pluigins: https://kubernetes.io/docs/reference/scheduling/config/#scheduling-plugins
+
 ## In-detail analysis of the plugin code:
 - The plugin is implemented in the `kdapt.go` file, which defines the `Kdapt` struct and implements the Kubernetes scheduler plugin interface.
     - Core plugin interface:
@@ -59,10 +70,3 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - It instantiates the plugin via the New() constructor.
     - It passes a valid fwk.Handle to the plugin.
     - Plugin can now call framework methods safely.
-
-## Scheduler Lifecycle:
-- _Note: For each enabled plugin that implements scoring, the `New()` method is called once, when the scheduler starts up._
-- The scheduler creats a scheduling cycle for each pod that needs to be scheduled. During this cycle, the scheduler goes through stages in this order: (All enabled plugins that implement the stage are called in sequence, and the results are aggregated based on weight to make scheduling decisions.)
-    - Prefilter, Filter, Score, NormalizeScore, Reserve, Permit, PreBind, Bind, PostBind.
-- The binding cycle is a separate cycle that is responsible for binding the pod to the selected node (The last three stages mentioned above are part of the binding cycle).
-- For all the feasible nodes that pass the filtering stage, the scheduler calls the Score() method of the ScorePlugin to assign a score(between 0-100) to each node per pod. The scores are then normalized and aggregated based on the weight assigned to each plugin in the scheduler configuration. The node with the highest score is selected for scheduling the pod.
