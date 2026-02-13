@@ -1,4 +1,5 @@
 # Kdapt Scheduler Plugin
+_Follow `./Scheduler-lab/Readme.md` for step-by-step instructions to setup KIND cluster for local Kubernetes development and testing._
 - What is Kubernetes Scheduler Plugin?
     - Kubernetes Scheduler Plugin is a framework that allows users to extend the functionality of the Kubernetes scheduler by implementing custom scheduling logic. It provides a way to influence the scheduling decisions made by the Kubernetes scheduler, allowing users to implement their own scheduling policies and algorithms.
 
