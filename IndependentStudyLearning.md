@@ -20,7 +20,7 @@ _Note: The following documentation is based on hands-on implementation on an ARM
                 - Kubernetes scheduler framework package for building scheduler plugins.
     - Add the plugin to the Kubernetes scheduler configuration, in `pkg/scheduler/framework/plugins/registry.go`.
         - Import the plugin package and add it to the registry map with a unique name.
-    - Build the Kubernetes scheduler binary with the plugin included.
+    - Build the Kubernetes scheduler binary with the plugin included. (this is to be run from the root of the Kubernetes repository, where Makefile for the whole project is located)
         - `make WHAT=cmd/kube-scheduler KUBE_BUILD_PLATFORM=linux/arm64`.
 
 - Move the built binary to the appropriate location (into `kdaptManifests/`), from `_output/local/bin/arm64/kube-scheduler`.

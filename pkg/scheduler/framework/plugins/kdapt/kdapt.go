@@ -30,8 +30,29 @@ func (k *Kdapt) Score(
 	return 50, fwk.NewStatus(fwk.Success)
 }
 
+func (k *Kdapt) NormalizeScore(
+	ctx context.Context,
+	state fwk.CycleState,
+	pod *v1.Pod,
+	scores fwk.NodeScoreList,
+) *fwk.Status {
+	var maxScore int64 = 0
+	for i := range scores {
+		if scores[i].Score > maxScore {
+			maxScore = scores[i].Score
+		}
+	}
+
+	for i := range scores {
+		if maxScore > 0 {
+			scores[i].Score = scores[i].Score * fwk.MaxNodeScore / maxScore
+		}
+	}
+	return fwk.NewStatus(fwk.Success)
+}
+
 func (k *Kdapt) ScoreExtensions() fwk.ScoreExtensions {
-	return nil
+	return k
 }
 
 func New(
