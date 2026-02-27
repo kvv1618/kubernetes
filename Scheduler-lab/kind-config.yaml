@@ -1,8 +1,56 @@
+#TotalCpu on local machine: 10000m
+#TotalMemory on local machine: 16000Mi
+
+# Worker A
+# Reserves only 1 CPU total → large allocatable → CPU-heavy node
+
+# Worker B
+# Reserves 2.5 CPU → medium CPU but more memory available
+
+# Worker C
+# Reserves 3.5 CPU + 3.5GB → smallest node
+
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 
 nodes:
 - role: control-plane
+
 - role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    systemReserved:
+      cpu: "500m"
+      memory: "500Mi"
+    kubeReserved:
+      cpu: "500m"
+      memory: "500Mi"
+# Scheduler sees 10000m - 1000m available on this node: 9000m
+# Scheduler sees 16000Mi - 1000Mi available on this node: 15000Mi
+
 - role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    systemReserved:
+      cpu: "2000m"
+      memory: "500Mi"
+    kubeReserved:
+      cpu: "500m"
+      memory: "500Mi"
+# Scheduler sees 10000m - 2500m available on this node: 7500m
+# Scheduler sees 16000Mi - 1000Mi available on this node: 15000Mi
+
 - role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    systemReserved:
+      cpu: "3000m"
+      memory: "3000Mi"
+    kubeReserved:
+      cpu: "500m"
+      memory: "500Mi"
+# Scheduler sees 10000m - 3500m available on this node: 6500m
+# Scheduler sees 16000Mi - 3500Mi available on this node: 12500Mi
