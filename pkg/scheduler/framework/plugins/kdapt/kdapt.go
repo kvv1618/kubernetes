@@ -26,12 +26,17 @@ func (k *Kdapt) Score(
 	pod *v1.Pod,
 	nodeInfo fwk.NodeInfo,
 ) (int64, *fwk.Status) {
+	// A simple bin pack scoring plugin that scores nodes based on their resource utilization
+	allocatable := nodeInfo.GetAllocatable()
+	used := nodeInfo.GetRequested()
 
-	// A simple controlled static load test scoring function that assigns a score of 100 to the node named "scheduler-lab-worker" and a score of 60 to all other nodes.
-	if nodeInfo.Node().Name == "scheduler-lab-worker" {
-		return fwk.MaxNodeScore, fwk.NewStatus(fwk.Success)
-	}
-	return 60, fwk.NewStatus(fwk.Success)
+	cpuUtilization := float64(used.GetMilliCPU()) / float64(allocatable.GetMilliCPU())
+	memUtilization := float64(used.GetMemory()) / float64(allocatable.GetMemory())
+
+	// Simple scoring function that combines CPU and memory utilization, giving more weight to CPU
+	score := int64((cpuUtilization * 0.7) + (memUtilization*0.3)*float64(fwk.MaxNodeScore))
+
+	return score, fwk.NewStatus(fwk.Success)
 }
 
 func (k *Kdapt) NormalizeScore(
