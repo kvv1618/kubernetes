@@ -27,7 +27,11 @@ func (k *Kdapt) Score(
 	nodeInfo fwk.NodeInfo,
 ) (int64, *fwk.Status) {
 
-	return 50, fwk.NewStatus(fwk.Success)
+	// A simple controlled static load test scoring function that assigns a score of 100 to the node named "scheduler-lab-worker" and a score of 60 to all other nodes.
+	if nodeInfo.Node().Name == "scheduler-lab-worker" {
+		return fwk.MaxNodeScore, fwk.NewStatus(fwk.Success)
+	}
+	return 60, fwk.NewStatus(fwk.Success)
 }
 
 func (k *Kdapt) NormalizeScore(
