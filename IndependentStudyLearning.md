@@ -23,7 +23,7 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - Build the Kubernetes scheduler binary with the plugin included. (this is to be run from the root of the Kubernetes repository, where Makefile for the whole project is located)
         - `make WHAT=cmd/kube-scheduler KUBE_BUILD_PLATFORM=linux/arm64`.
 
-- Move the built binary to the appropriate location (into `kdaptManifests/`), from `_output/local/bin/arm64/kube-scheduler`.
+- Move the built binary to the appropriate location (into `kdaptManifests/`), from `_output/local/bin/linux/arm64/kube-scheduler`.
 - Build and push the Docker image for the plugin, using the provided Dockerfile in `kdaptManifests/`.
     - The dockerfile is a simple linux image that copies the built kube-scheduler binary into it, along with the necessary configuration files for the plugin.
 - Deploy the plugin to the Kubernetes cluster:

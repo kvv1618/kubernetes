@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static-pod-deployment
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: static-pod
+  template:
+    metadata:
+      labels:
+        app: static-pod
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: static-pod-container
+          image: nginx:latest
+          ports:
+            - containerPort: 80

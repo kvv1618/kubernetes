@@ -9,21 +9,40 @@ kind: ClusterRole
 metadata:
   name: kdapt-scheduler-role
 rules:
-  - apiGroups: [""]
-    resources: ["pods","nodes","namespaces","configmaps","persistentvolumes","persistentvolumeclaims","replicationcontrollers","services"]
-    verbs: ["get","list","watch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments","statefulsets","replicasets"]
-    verbs: ["get","list","watch"]
-  - apiGroups: ["policy"]
-    resources: ["poddisruptionbudgets"]
-    verbs: ["get","list","watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["csinodes","csidrivers","volumeattachments","storageclasses","csistoragecapacities"]
-    verbs: ["get","list","watch"]
-  - apiGroups: ["resource.k8s.io"]
-    resources: ["resourceslices","deviceclasses","resourceclaims"]
-    verbs: ["get","list","watch"]
+- apiGroups: [""]
+  resources:
+    - pods
+    - pods/status
+    - pods/binding
+    - nodes
+    - nodes/status
+    - namespaces
+    - events
+    - bindings
+  verbs:
+    - get
+    - list
+    - watch
+    - update
+    - patch
+    - create
+- apiGroups: ["coordination.k8s.io"]
+  resources:
+    - leases
+  verbs:
+    - get
+    - watch
+    - list
+    - update
+    - create
+- apiGroups: ["apps"]
+  resources:
+    - replicasets
+    - statefulsets
+  verbs:
+    - get
+    - list
+    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

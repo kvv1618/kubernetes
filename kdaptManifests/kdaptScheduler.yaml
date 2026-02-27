@@ -5,6 +5,8 @@ profiles:
   - schedulerName: kdapt-scheduler
     plugins:
       score:
+        disabled:
+          - name: "*"
         enabled:
           - name: KdaptScheduler
             weight: 1
