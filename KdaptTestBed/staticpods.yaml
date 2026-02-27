@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: static-pod-deployment
+  name: static-pod-deployment-cpu-heavy
 spec:
-  replicas: 10
+  replicas: 8
   selector:
     matchLabels:
       app: static-pod
@@ -14,7 +14,34 @@ spec:
     spec:
       schedulerName: kdapt-scheduler
       containers:
-        - name: static-pod-container
+        - name: static-pod-container-cpu-heavy
           image: nginx:latest
           ports:
             - containerPort: 80
+          resources:
+            requests:
+              cpu: "1000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static-pod-deployment-memory-heavy
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: static-pod-memory-heavy
+  template:
+    metadata:
+      labels:
+        app: static-pod-memory-heavy
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: static-pod-container-memory-heavy
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "1.5Gi"
