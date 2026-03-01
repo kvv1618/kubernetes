@@ -39,16 +39,27 @@ _Note: The following documentation is based on hands-on implementation on an ARM
 - For all the feasible nodes that pass the filtering stage, the scheduler calls the Score() method of the ScorePlugin to assign a score(between 0-100) to each node per pod. The scores are then normalized and aggregated based on the weight assigned to each plugin in the scheduler configuration. The node with the highest score is selected for scheduling the pod.
 
 ## Default K8s Scheduling:
-- The default enabled pluigins: https://kubernetes.io/docs/reference/scheduling/config/#scheduling-plugins
+- The default enabled plugins: https://kubernetes.io/docs/reference/scheduling/config/#scheduling-plugins
+- The default Scheduler spreads the pods across the cluster based on resource requests and availability, and tries to balance the load across nodes.
 
 ## In-detail analysis of the plugin code:
 - The plugin is implemented in the `kdapt.go` file, which defines the `Kdapt` struct and implements the Kubernetes scheduler plugin interface.
     - Core plugin interface:
-         ```
+         ```go
           type plugin interface {
               Name() string
           }
         ```
+- New() method:
+    - The `New()` method is a constructor function that initializes the plugin and returns an instance of it. It takes in a `fwk.Handle` as an argument, which is used to interact with the Kubernetes scheduler framework. The `fwk.Handle` provides access to various scheduler components and allows the plugin to call framework methods safely.
+- Score() method:
+    - The `Score()` method is responsible for scoring nodes based on custom logic. It takes in the context, cycle state, pod information, and node information as arguments, and returns a score for each node along with a status indicating whether the scoring was successful or not.
+- ScoreExtensions() method:
+    - The `ScoreExtensions()` method is used to indicate whether the plugin implements any score extensions. Score extensions allow the plugin to perform additional logic after scoring, such as normalizing scores or applying weights to scores. If the plugin does not implement any score extensions, it can return nil.
+- NormalizeScore() method:
+    - `ScoreExtensions()` returns `NormalizeScore()` method, which is used to normalize the scores assigned to nodes by the `Score()` method. 
+    - Normalization is the process of adjusting the scores to a common scale, typically between 0 and 100, to ensure that they are comparable across different plugins and nodes.
+
 - Few types of plugins:
     - PreFilterPlugin:
         - This plugin type is responsible for performing pre-filtering logic before the scheduling process begins. It implements the `PreFilter` method, which takes in the pod and node information and returns a status indicating whether the pod can be scheduled on the node or not.
@@ -56,7 +67,7 @@ _Note: The following documentation is based on hands-on implementation on an ARM
         - This plugin type is responsible for filtering nodes based on custom logic. It implements the `Filter` method, which takes in the pod and node information and returns a status indicating whether the pod can be scheduled on the node or not.
     - ScorePlugin: 
         - This plugin type is responsible for scoring nodes based on custom logic. It implements the `Score` method, which takes in the pod and node information and returns a score for each node.
-            ```
+            ```go
             type ScorePlugin interface {
                 plugin
                 Score(ctx context.Context, state *CycleState, pod *v1.Pod, nodeinfo *NodeInfo) (int64, *Status)
@@ -65,6 +76,12 @@ _Note: The following documentation is based on hands-on implementation on an ARM
             ```
         - CycleState is a data structure that holds information about the current scheduling cycle. It allows plugins to share information and maintain state across different stages of the scheduling process.
         - Pod and NodeInfo are data structures that represent the pod being scheduled and the node being evaluated, respectively.
+
+_Note: A single plugin file can implement multiple plugin types, as long as the corresponding methods from the interface are implemented. For example, a plugin can implement both FilterPlugin and ScorePlugin interfaces._
+
+- Fwk package:
+    - The fwk package is one of the most useful packages in the Kubernetes scheduler framework. It provides the necessary interfaces and data structures for building scheduler plugins. It defines the plugin interfaces, the CycleState, and other helper functions and types that are used by the plugins to interact with the scheduler framework.
+
 - The fwk.Handle interface:
     - The `fwk.Handle` interface is used to interact with the Kubernetes scheduler framework. It provides access to various scheduler components, such as the node informer, pod informer, shared scheduling state, and other plugins.
 - The framework ensures that:
