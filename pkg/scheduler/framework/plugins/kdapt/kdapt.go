@@ -34,9 +34,9 @@ func (k *Kdapt) Score(
 	memUtilization := float64(used.GetMemory()) / float64(allocatable.GetMemory())
 
 	// Simple scoring function that combines CPU and memory utilization, giving more weight to CPU
-	score := int64((cpuUtilization * 0.7) + (memUtilization*0.3)*float64(fwk.MaxNodeScore))
+	score := cpuUtilization*0.7 + memUtilization*0.3
 
-	return score, fwk.NewStatus(fwk.Success)
+	return int64(score * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 }
 
 func (k *Kdapt) NormalizeScore(

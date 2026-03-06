@@ -46,3 +46,171 @@
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
 - Re-create KIND cluster with uneven node resources to test the bin pack scoring algorithm on static pods with varying resource requests.
 - Explore more complex scheduling scenarios with dynamic resource requests.
+
+
+## To Document:
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-lab-worker-resource-requests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-requests
+  template:
+    metadata:
+      labels:
+        app: resource-requests
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: scheduler-lab-worker-resource-requests-container
+          image: nginx:latest
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          ports:
+            - containerPort: 80
+      nodeSelector:
+        kubernetes.io/hostname: scheduler-lab-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-lab-worker2-resource-requests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-requests
+  template:
+    metadata:
+      labels:
+        app: resource-requests
+    spec:
+      schedulerName: kdapt-scheduler
+      nodeSelector:
+        kubernetes.io/hostname: scheduler-lab-worker2
+      containers:
+        - name: scheduler-lab-worker2-resource-requests-container
+          image: nginx:latest
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "1Gi"
+            limits:
+              cpu: "3000m"
+              memory: "1Gi"
+          ports:
+            - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-lab-worker3-resource-requests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-requests
+  template:
+    metadata:
+      labels:
+        app: resource-requests
+    spec:
+      schedulerName: kdapt-scheduler
+      nodeSelector:
+        kubernetes.io/hostname: scheduler-lab-worker3
+      containers:
+        - name: scheduler-lab-worker3-resource-requests-container
+          image: nginx:latest
+          resources:
+            requests:
+              cpu: "4000m"
+              memory: "3Gi"
+            limits:
+              cpu: "4000m"
+              memory: "3Gi"
+          ports:
+            - containerPort: 80
+
+```
+
+#  9 7 6 | 7 7 5
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static-pod-deployment-cpu-heavy
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: static-pod
+  template:
+    metadata:
+      labels:
+        app: static-pod
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: static-pod-container-cpu-heavy
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "1000m"
+```
+
+```
+k8 get pods -o wide
+NAME                                                       READY   STATUS    RESTARTS   AGE    IP            NODE                    NOMINATED NODE   READINESS GATES
+scheduler-lab-worker-resource-requests-588f767dc8-nrzvh    1/1     Running   0          4h6m   10.244.2.3    scheduler-lab-worker    <none>           <none>
+scheduler-lab-worker2-resource-requests-64655b574b-7qdwn   1/1     Running   0          4h6m   10.244.1.3    scheduler-lab-worker2   <none>           <none>
+scheduler-lab-worker3-resource-requests-78b84b8548-c4hhd   1/1     Running   0          4h6m   10.244.3.5    scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-4nk29            1/1     Running   0          64s    10.244.3.15   scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-8v8b2            1/1     Running   0          64s    10.244.3.13   scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-hbgp7            1/1     Running   0          64s    10.244.1.7    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-lvdcw            1/1     Running   0          64s    10.244.3.11   scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-n7kwz            1/1     Running   0          64s    10.244.1.6    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-n89tp            1/1     Running   0          64s    10.244.3.14   scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-nfjvn            1/1     Running   0          64s    10.244.3.12   scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-pkhwx            1/1     Running   0          64s    10.244.1.5    scheduler-lab-worker2   <none>           <none>
+```
+
+```
+ProviderID:                   kind://docker/scheduler-lab/scheduler-lab-worker3
+Non-terminated Pods:          (8 in total)
+  Namespace                   Name                                                        CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+  ---------                   ----                                                        ------------  ----------  ---------------  -------------  ---
+  default                     scheduler-lab-worker3-resource-requests-78b84b8548-c4hhd    4 (40%)       4 (40%)     3Gi (39%)        3Gi (39%)      4h6m
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-4nk29             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-8v8b2             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-lvdcw             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-n89tp             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-nfjvn             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  kube-system                 kindnet-v2xgr                                               100m (1%)     100m (1%)   50Mi (0%)        50Mi (0%)      6d23h
+  kube-system                 kube-proxy-95dl8                                            0 (0%)        0 (0%)      0 (0%)           0 (0%)         6d23h
+```
+
+```
+ProviderID:                   kind://docker/scheduler-lab/scheduler-lab-worker2
+Non-terminated Pods:          (7 in total)
+  Namespace                   Name                                                        CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+  ---------                   ----                                                        ------------  ----------  ---------------  -------------  ---
+  default                     scheduler-lab-worker2-resource-requests-64655b574b-7qdwn    3 (30%)       3 (30%)     1Gi (13%)        1Gi (13%)      4h6m
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-hbgp7             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-n7kwz             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  default                     static-pod-deployment-cpu-heavy-7f6fd9659-pkhwx             1 (10%)       0 (0%)      0 (0%)           0 (0%)         100s
+  kube-system                 kdapt-scheduler-6b8cc67c98-98w5z                            0 (0%)        0 (0%)      0 (0%)           0 (0%)         119s
+  kube-system                 kindnet-ttmnw                                               100m (1%)     100m (1%)   50Mi (0%)        50Mi (0%)      6d23h
+  kube-system                 kube-proxy-tmvx7                                            0 (0%)        0 (0%)      0 (0%)           0 (0%)         6d23h
+```
