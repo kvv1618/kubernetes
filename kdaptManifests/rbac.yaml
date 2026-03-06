@@ -19,6 +19,12 @@ rules:
     - namespaces
     - events
     - bindings
+    - configmaps
+    - services
+    - persistentvolumeclaims
+    - persistentvolumes
+    - secrets
+    - replicationcontrollers
   verbs:
     - get
     - list
@@ -39,6 +45,37 @@ rules:
   resources:
     - replicasets
     - statefulsets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups: ["resource.k8s.io"]
+  resources:
+    - deviceclasses
+    - resourceslices
+    - resourceclaims
+    - resourceclaims/status
+    - resourceclaimtemplates
+    - devicetaintrules
+    - workloads
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups: ["policy"]
+  resources:
+    - poddisruptionbudgets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups: ["storage.k8s.io"]
+  resources:
+    - csistoragecapacities
+    - storageclasses
+    - volumeattachments
+    - csinodes
+    - csidrivers
   verbs:
     - get
     - list

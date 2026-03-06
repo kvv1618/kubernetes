@@ -6,7 +6,7 @@
 - Written a simple bin pack scoring algo based on Node resource utilization, combining CPU and memory utilization, giving more weight to CPU.
 
 ### Testing methodology:
-- Static Pod testing:
+#### Static Pod testing:
 - Deployed a static pod deployment using kdapt scheduler.
 - The plugin at this point of time had a bias towards a specific node ("scheduler-lab-worker") by returning a score of 100 for that node and 60 for all other nodes.
 
@@ -43,6 +43,6 @@
 	```
 
 ## Next Steps:
-    - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
-    - Re-create KIND cluster with uneven node resources to test the bin pack scoring algorithm on static pods with varying resource requests.
-    - Explore more complex scheduling scenarios with dynamic resource requests.
+- Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
+- Re-create KIND cluster with uneven node resources to test the bin pack scoring algorithm on static pods with varying resource requests.
+- Explore more complex scheduling scenarios with dynamic resource requests.
