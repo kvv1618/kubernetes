@@ -50,6 +50,27 @@
 
 ## To Document:
 ```
+func (k *Kdapt) Score(
+	ctx context.Context,
+	state fwk.CycleState,
+	pod *v1.Pod,
+	nodeInfo fwk.NodeInfo,
+) (int64, *fwk.Status) {
+	// A simple bin pack scoring plugin that scores nodes based on their resource utilization
+	allocatable := nodeInfo.GetAllocatable()
+	used := nodeInfo.GetRequested()
+
+	cpuUtilization := float64(used.GetMilliCPU()) / float64(allocatable.GetMilliCPU())
+	memUtilization := float64(used.GetMemory()) / float64(allocatable.GetMemory())
+
+	// Simple scoring function that combines CPU and memory utilization, giving more weight to CPU
+	score := cpuUtilization*0.7 + memUtilization*0.3
+
+	return int64(score * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
+}
+```
+
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
