@@ -42,6 +42,26 @@ _Note: The following documentation is based on hands-on implementation on an ARM
 - The default enabled plugins: https://kubernetes.io/docs/reference/scheduling/config/#scheduling-plugins
 - The default Scheduler spreads the pods across the cluster based on resource requests and availability, and tries to balance the load across nodes.
 
+## Resource Semantics:
+- Allocatable vs Capacity:
+    - Allocatable is the resources that are available for scheduling, after accounting for the requests of the already running pods.
+    - Capacity is the total resources that are available on the node.
+    - Allocatable = Capacity - Requests of the already running pods.
+- CPU request:
+    - _CPU is “compressible”: if a pod wants more CPU than available, it usually gets slowed down (throttled) rather than killed. Work still continues, just with higher latency/lower throughput, i.e. CPU can be time-shared._
+    - Reserves schedulable capacity at placement time.
+    - Does not mean dedicated exclusive cores by default.
+    - Runtime CPU is time-shared across runnable containers.
+    - If a container has no CPU limit (or a high one), it can temporarily use more than its request when spare CPU exists.
+- Memory request:
+    - _Memory is “non-compressible”: if a pod uses more RAM than is available, the kernel can’t “throttle RAM usage” the same way. It leads to memory pressure, and eventually the process/pod may be OOMKilled. It should be physically available at the time of allocation._
+    - Also reserves schedulable capacity at placement time.
+    - Memory usage is not time-shared like CPU cycles.
+- Example:
+    - 8-core node, 4 pods each request 2 cores
+    - Scheduler sees 2+2+2+2 = 8, so node is “full” for new 2-core requests, irrespective of current CPU usage.
+    - At runtime, if 3 pods are mostly idle, 1 pod may use >2 cores if its CPU limit allows it
+
 ## In-detail analysis of the plugin code:
 - The plugin is implemented in the `kdapt.go` file, which defines the `Kdapt` struct and implements the Kubernetes scheduler plugin interface.
     - Core plugin interface:
