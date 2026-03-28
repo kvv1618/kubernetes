@@ -2,6 +2,8 @@ package kdapt
 
 import (
 	"context"
+	"maps"
+	"math"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -15,8 +17,11 @@ import (
 const Name = "KdaptScheduler"
 
 type NodeRuntimeMetrics struct {
-	CPUMilli    int64
-	MemoryBytes int64
+	CPUMilli    float64
+	MemoryBytes float64
+
+	SmoothedCPUMilli    float64
+	SmoothedMemoryBytes float64
 }
 
 type Kdapt struct {
@@ -75,19 +80,48 @@ func (k *Kdapt) runMetricsCollector(
 	}
 }
 
+func clamp(x, min, max float64) float64 {
+	if x < min {
+		return min
+	}
+	if x > max {
+		return max
+	}
+	return x
+}
+
 func (k *Kdapt) collectMetrics(
 	ctx context.Context,
 	metricsClient *metricsclient.Clientset,
 ) (map[string]NodeRuntimeMetrics, error) {
+	ema := 0.3 // Exponential Moving Average, considering 30% new runtime values and 70% old/hostoric values.
 	list, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
+	k.mutexLock.RLock()
+	prevMetrics := make(map[string]NodeRuntimeMetrics, len(k.nodeMetrics))
+	maps.Copy(prevMetrics, k.nodeMetrics)
+	k.mutexLock.RUnlock()
+
 	next := make(map[string]NodeRuntimeMetrics, len(list.Items))
 	for _, node := range list.Items {
+		currCpu := float64(node.Usage.Cpu().MilliValue())
+		currMem := float64(node.Usage.Memory().Value())
+		prevMetrics, exists := prevMetrics[node.Name]
+		if !exists {
+			prevMetrics = NodeRuntimeMetrics{
+				SmoothedCPUMilli:    currCpu,
+				SmoothedMemoryBytes: currMem,
+			}
+		}
+		SmoothedCPUMilli := ema*currCpu + (1-ema)*prevMetrics.SmoothedCPUMilli
+		SmoothedMemoryBytes := ema*currMem + (1-ema)*prevMetrics.SmoothedMemoryBytes
 		next[node.Name] = NodeRuntimeMetrics{
-			CPUMilli:    node.Usage.Cpu().MilliValue(),
-			MemoryBytes: node.Usage.Memory().Value(),
+			CPUMilli:            currCpu,
+			MemoryBytes:         currMem,
+			SmoothedCPUMilli:    SmoothedCPUMilli,
+			SmoothedMemoryBytes: SmoothedMemoryBytes,
 		}
 	}
 	return next, nil
@@ -99,17 +133,62 @@ func (k *Kdapt) Score(
 	pod *v1.Pod,
 	nodeInfo fwk.NodeInfo,
 ) (int64, *fwk.Status) {
-	// A simple bin pack scoring plugin that scores nodes based on their resource utilization
 	allocatable := nodeInfo.GetAllocatable()
-	used := nodeInfo.GetRequested()
+	requested := nodeInfo.GetRequested()
 
-	cpuUtilization := float64(used.GetMilliCPU()) / float64(allocatable.GetMilliCPU())
-	memUtilization := float64(used.GetMemory()) / float64(allocatable.GetMemory())
+	allocCpu := float64(allocatable.GetMilliCPU())
+	allocMem := float64(allocatable.GetMemory())
 
-	// Simple scoring function that combines CPU and memory utilization, giving more weight to CPU
-	score := cpuUtilization*0.7 + memUtilization*0.3
+	requestedCpuOnNode := float64(requested.GetMilliCPU())
+	requestedMemOnNode := float64(requested.GetMemory())
 
-	return int64(score * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
+	requestedCpuUtil := clamp(requestedCpuOnNode/allocCpu, 0, 1)
+	requestedMemUtil := clamp(requestedMemOnNode/allocMem, 0, 1)
+
+	k.mutexLock.RLock()
+	rt, ok := k.nodeMetrics[nodeInfo.Node().Name]
+	k.mutexLock.RUnlock()
+	if !ok {
+		return 0, fwk.NewStatus(fwk.Error, "node metrics not found")
+	}
+
+	runTimeCpuUtil := clamp(rt.SmoothedCPUMilli/allocCpu, 0, 1)
+	runTimeMemUtil := clamp(rt.SmoothedMemoryBytes/allocMem, 0, 1)
+
+	cpuMismatch := clamp(math.Abs(requestedCpuUtil-runTimeCpuUtil), 0, 1)
+	memMismatch := clamp(math.Abs(requestedMemUtil-runTimeMemUtil), 0, 1)
+
+	requestedCpuByPod, requestedMemByPod := int64(0), int64(0)
+	for _, container := range pod.Spec.Containers {
+		requestedCpuByPod += container.Resources.Requests.Cpu().MilliValue()
+		requestedMemByPod += container.Resources.Requests.Memory().Value()
+	}
+	projectedCpu := requestedCpuOnNode + float64(requestedCpuByPod)
+	projectedMem := requestedMemOnNode + float64(requestedMemByPod)
+	projectedCpuUtil := clamp(projectedCpu/allocCpu, 0, 1)
+	projectedMemUtil := clamp(projectedMem/allocMem, 0, 1)
+
+	// Missmatch is used to calculate the weight of the runtime utilization.
+	// aplha is the weight of the runtime metrics.
+	alphaCpu := clamp(0.3+cpuMismatch*0.8, 0, 1) // 0.3 is the base weight, when there is no mismatch.
+	alphaMem := clamp(0.1+memMismatch*0.4, 0, 1)
+	// Score using projectedUtil vs runtimeUtil - estimate placement quality
+	cpuScore := (1-alphaCpu)*projectedCpuUtil + alphaCpu*runTimeCpuUtil
+	memScore := (1-alphaMem)*projectedMemUtil + alphaMem*runTimeMemUtil
+
+	wCpu := 0.6
+	wMem := 0.4
+	penality := 0.0
+	if runTimeCpuUtil > 0.8 {
+		penality += 0.2 // less penalty for higher cpu utilization, because CPU is compressible
+	}
+	if runTimeMemUtil > 0.8 {
+		penality += 0.25
+	}
+
+	finalScore := wCpu*cpuScore + wMem*memScore - penality
+	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
+
 }
 
 func (k *Kdapt) NormalizeScore(

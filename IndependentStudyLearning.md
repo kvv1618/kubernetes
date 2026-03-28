@@ -62,6 +62,9 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - Scheduler sees 2+2+2+2 = 8, so node is “full” for new 2-core requests, irrespective of current CPU usage.
     - At runtime, if 3 pods are mostly idle, 1 pod may use >2 cores if its CPU limit allows it
 
+- Runtime CPU is often a very useful signal(aggressive approach), and requests should usually remain the stronger safety signal for memory(conservative approach).
+- _Hence, CPU and memory should not be weighted the same when calculating the score._
+
 ## In-detail analysis of the plugin code:
 - The plugin is implemented in the `kdapt.go` file, which defines the `Kdapt` struct and implements the Kubernetes scheduler plugin interface.
     - Core plugin interface:

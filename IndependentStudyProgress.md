@@ -240,7 +240,9 @@
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
 - Extending the plugin to make intelligent decision based on run time resource utilization, to tackle the most common issue of underutilisation of nodes.
   - Combination of run-time and requests to provide safety guarantees.
-  - score = w_req * requested_util + w_rt * runtime_util
+  - score(node,pod)=w_cpu​⋅cpuScore+w_mem​⋅memScore
+    - requested_cpuScore=(1−αcpu​)⋅reqCPU+αcpu​⋅rtCPU
+    - requested_memScore=(1−αmem​)⋅reqMem+αmem​⋅rtMem
   - _Can also include running average, exponential moving average, etc. for utilization to smoothen spikes._
   - Try to improve:
     - load balancing between nodes.
