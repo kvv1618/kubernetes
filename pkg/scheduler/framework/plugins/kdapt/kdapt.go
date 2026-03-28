@@ -2,6 +2,7 @@ package kdapt
 
 import (
 	"context"
+	"k8s.io/klog/v2"
 	"maps"
 	"math"
 	"sync"
@@ -77,6 +78,7 @@ func (k *Kdapt) runMetricsCollector(
 			k.nodeMetrics = next
 			k.mutexLock.Unlock()
 		}
+		klog.Infof("Metrics: %v", k.nodeMetrics)
 	}
 }
 
@@ -187,6 +189,18 @@ func (k *Kdapt) Score(
 	}
 
 	finalScore := wCpu*cpuScore + wMem*memScore - penality
+
+	klog.Infof(
+		"pod=%s node=%s reqCPU=%.2f rtCPU=%.2f mismatchCPU=%.2f projectedCPU=%.2f final=%.2f",
+		pod.Name,
+		nodeInfo.Node().Name,
+		requestedCpuUtil,
+		runTimeCpuUtil,
+		cpuMismatch,
+		projectedCpuUtil,
+		finalScore,
+	)
+	klog.Infof("Final score: %v", finalScore)
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 
 }
