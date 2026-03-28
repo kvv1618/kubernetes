@@ -108,15 +108,15 @@ func (k *Kdapt) collectMetrics(
 	for _, node := range list.Items {
 		currCpu := float64(node.Usage.Cpu().MilliValue())
 		currMem := float64(node.Usage.Memory().Value())
-		prevMetrics, exists := prevMetrics[node.Name]
+		prevNodeMetrics, exists := prevMetrics[node.Name]
 		if !exists {
-			prevMetrics = NodeRuntimeMetrics{
+			prevNodeMetrics = NodeRuntimeMetrics{
 				SmoothedCPUMilli:    currCpu,
 				SmoothedMemoryBytes: currMem,
 			}
 		}
-		SmoothedCPUMilli := ema*currCpu + (1-ema)*prevMetrics.SmoothedCPUMilli
-		SmoothedMemoryBytes := ema*currMem + (1-ema)*prevMetrics.SmoothedMemoryBytes
+		SmoothedCPUMilli := ema*currCpu + (1-ema)*prevNodeMetrics.SmoothedCPUMilli
+		SmoothedMemoryBytes := ema*currMem + (1-ema)*prevNodeMetrics.SmoothedMemoryBytes
 		next[node.Name] = NodeRuntimeMetrics{
 			CPUMilli:            currCpu,
 			MemoryBytes:         currMem,
