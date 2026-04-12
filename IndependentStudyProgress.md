@@ -236,6 +236,80 @@
     kube-system                 kube-proxy-tmvx7                                            0 (0%)        0 (0%)      0 (0%)           0 (0%)         6d23h
   ```
 
+##### Bin-Packing powered with run-time metrics:
+- This is a variant of the bin-packing algorithm that uses run-time metrics to make scheduling decisions.
+- Algorithm:
+  - Node runtime metrics are collected periodically from the metrics server, not on every pod scheduling event
+  ```go
+  go k.runMetricsCollector(ctx, metricsClient, 10*time.Second)
+  ```
+  - All pods scored within a same burst mostly see the same runtime snapshot, while only requested resources change between scheduling decisions
+  - Tradeoff:
+    - _Lower scheduling overhead at the cost of slightly stale runtime information during fast bursts_
+    - During a burst of pods, collecting fresh metrics after every individual pod placement would increase scheduler overhead and likely add scheduling latency.
+  - The scheduler combines:
+    - requested resources already on the node
+    - smoothed runtime CPU and memory usage
+    - the incoming pod’s own request
+    - a penalty for nodes already under high runtime pressure
+  - The central adaptive idea in the algorithm is based on the mismatch between request-based and runtime-based utilization.
+  ```bash
+  cpuMismatch=∣requestedCpuUtil−runTimeCpuUtil∣
+  memMismatch=∣requestedMemUtil−runTimeMemUtil∣
+  ```
+  - This mismatch measures how much the scheduler’s static view differs from actual observed node behavior
+  - Interpretation:
+    - Low mismatch means requests and runtime usage agree reasonably well.
+    - High mismatch means the request-based model is not accurately reflecting current behavior.
+    - _This allows the scheduler to decide how much trust to place in runtime metrics._
+  - The algorithm computes adaptive weights alphaCpu and alphaMem:
+  ```bash
+  alphaCpu=clamp(0.3+cpuMismatch*0.8,0,1)
+  alphaMem=clamp(0.1+memMismatch*0.4,0,1)
+  ```
+  - This allows the scheduler to dynamically adjust the weight given to runtime metrics based on how well they match the requested resources.
+    - CPU starts with a higher runtime influence (0.3 base weight).
+    - Memory starts with a lower runtime influence (0.1 base weight).
+    - As mismatch increases, runtime metrics gain more importance.
+    - CPU reacts more strongly than memory, because CPU is compressible.
+    - Memory remains more conservative, because memory pressure is riskier.
+
+  - The final score is computed as:
+  ```bash
+  cpuScore=(1−alphaCpu)⋅projectedCpuUtil+alphaCpu⋅runTimeCpuUtil
+  memScore=(1−alphaMem)⋅projectedMemUtil+alphaMem⋅runTimeMemUtil
+  ```
+  ```bash
+  finalScore=wCpu⋅cpuScore+wMem⋅memScore−penality
+  ```
+    - Where penality is calculated as:
+    ```bash
+    penality=0.0
+    if runTimeCpuUtil>0.8 {
+      penality+=0.2 // less penalty for higher cpu utilization, because CPU is compressible
+    }
+    if runTimeMemUtil>0.8 {
+      penality+=0.25
+    }
+    ```
+    - Using projected utilization instead of current requested utilization is what makes the algorithm forward-looking, and not reactive to current utilization.
+    - It makes scheduling decisions future-aware, and helps in evaluating the consequences of the placement.
+    - Prevents greedy scheduling decisions that may lead to resource crunch, and over packing.
+    - Helps in load balancing between nodes.
+      - Say Node A's current utilization is 0.6, and Node B's current utilization is 0.4.
+      - If the scheduler places the incoming pod on Node A, the projected utilization of Node A will be 0.9.
+      - If the scheduler places the incoming pod on Node B, the projected utilization of Node B will be 0.5.
+      - Traditional bin-packing algorithm would place the pod on Node A, because it has higher utilization. But:
+        - It is better to place the pod on Node B, because Node A's 0.9 utilization would be harmful for the cluster.
+      - Projected utilization with penality covers such cases. Adding explicit penalties for already-stressed nodes, or nodes which would be stressed by the placement.
+    - Memory penality is more than CPU, because Memory pressure is more dangerous than CPU pressure
+- In short, it is a hybrid between:
+  - safe request-based bin-packing
+  - adaptive runtime-sensitive placement
+
+- Experiment:
+  - The workload is a burst of 8 pods, each requesting 1000m CPU, using kdapt-scheduler
+
 ## Next Steps:
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
 - Extending the plugin to make intelligent decision based on run time resource utilization, to tackle the most common issue of underutilisation of nodes.
@@ -252,3 +326,88 @@
 
 
 ## To Document:
+- Not colleting metrics after scheduling each pod during burst - this is to avaoid scheduling latency. 
+```
+I0405 20:03:04.709106       1 kdapt.go:80] -----------------------------------------------------------------
+I0405 20:03:14.697039       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=166.00, memoryBytes=1452298240.00, smoothedCpuMilli=147.80, smoothedMemoryBytes=1450443161.60}
+I0405 20:03:14.697182       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=36.00, memoryBytes=783876096.00, smoothedCpuMilli=29.70, smoothedMemoryBytes=783864627.20}
+I0405 20:03:14.697189       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=35.00, memoryBytes=703205376.00, smoothedCpuMilli=30.80, smoothedMemoryBytes=724666368.00}
+I0405 20:03:14.697193       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=38.00, memoryBytes=741777408.00, smoothedCpuMilli=73.70, smoothedMemoryBytes=740871372.80}
+I0405 20:03:14.697197       1 kdapt.go:80] -----------------------------------------------------------------
+I0405 20:03:24.697820       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=166.00, memoryBytes=1452298240.00, smoothedCpuMilli=153.26, smoothedMemoryBytes=1450999685.12}
+I0405 20:03:24.697854       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=36.00, memoryBytes=783876096.00, smoothedCpuMilli=31.59, smoothedMemoryBytes=783868067.84}
+I0405 20:03:24.697859       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=35.00, memoryBytes=703205376.00, smoothedCpuMilli=32.06, smoothedMemoryBytes=718228070.40}
+I0405 20:03:24.697862       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=38.00, memoryBytes=741777408.00, smoothedCpuMilli=62.99, smoothedMemoryBytes=741143183.36}
+I0405 20:03:24.697866       1 kdapt.go:80] -----------------------------------------------------------------
+I0405 20:03:31.685631       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gtsfl node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.685654       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.685968       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gtsfl node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.12 final=0.07
+I0405 20:03:31.686008       1 kdapt.go:229] Final score: 0.06596783636060116
+I0405 20:03:31.686032       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gtsfl node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.686092       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.687649       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-nv7fn node=scheduler-lab-worker reqCPU=0.12 rtCPU=0.00 mismatchCPU=0.12 projectedCPU=0.22 final=0.10
+I0405 20:03:31.687664       1 kdapt.go:229] Final score: 0.09675110036060115
+I0405 20:03:31.687670       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-nv7fn node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.687673       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.687676       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-nv7fn node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.687678       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.690796       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-w5rl4 node=scheduler-lab-worker reqCPU=0.22 rtCPU=0.00 mismatchCPU=0.22 projectedCPU=0.32 final=0.12
+I0405 20:03:31.690833       1 kdapt.go:229] Final score: 0.11793436436060116
+I0405 20:03:31.690841       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-w5rl4 node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.690846       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.690849       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-w5rl4 node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.690871       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.694940       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-6snw7 node=scheduler-lab-worker reqCPU=0.32 rtCPU=0.00 mismatchCPU=0.32 projectedCPU=0.42 final=0.13
+I0405 20:03:31.694969       1 kdapt.go:229] Final score: 0.12951762836060116
+I0405 20:03:31.694987       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-6snw7 node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.694952       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-6snw7 node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.695001       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.695006       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.696087       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-pfbnk node=scheduler-lab-worker reqCPU=0.42 rtCPU=0.00 mismatchCPU=0.42 projectedCPU=0.52 final=0.13
+I0405 20:03:31.696100       1 kdapt.go:229] Final score: 0.13150089236060117
+I0405 20:03:31.696104       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-pfbnk node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.696108       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.696117       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-pfbnk node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.696133       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.696694       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-r4c6x node=scheduler-lab-worker reqCPU=0.52 rtCPU=0.00 mismatchCPU=0.52 projectedCPU=0.62 final=0.12
+I0405 20:03:31.696753       1 kdapt.go:229] Final score: 0.12388415636060116
+I0405 20:03:31.696761       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-r4c6x node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.696767       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.696772       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-r4c6x node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.696777       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.697427       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gkhql node=scheduler-lab-worker reqCPU=0.62 rtCPU=0.00 mismatchCPU=0.62 projectedCPU=0.72 final=0.11
+I0405 20:03:31.697458       1 kdapt.go:229] Final score: 0.10666742036060116
+I0405 20:03:31.697470       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gkhql node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.697479       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.697489       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-gkhql node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.697498       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:31.704181       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-tlg45 node=scheduler-lab-worker reqCPU=0.72 rtCPU=0.00 mismatchCPU=0.72 projectedCPU=0.82 final=0.08
+I0405 20:03:31.704223       1 kdapt.go:229] Final score: 0.07985068436060119
+I0405 20:03:31.704223       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-tlg45 node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.11 final=0.05
+I0405 20:03:31.704233       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7f6fd9659-tlg45 node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.01 mismatchCPU=0.00 projectedCPU=0.11 final=0.05
+I0405 20:03:31.704236       1 kdapt.go:229] Final score: 0.053271573068199234
+I0405 20:03:31.704248       1 kdapt.go:229] Final score: 0.054177428323767325
+I0405 20:03:34.694968       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=145.00, memoryBytes=1451958272.00, smoothedCpuMilli=150.78, smoothedMemoryBytes=1451287261.18}
+I0405 20:03:34.695012       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=28.00, memoryBytes=783613952.00, smoothedCpuMilli=30.51, smoothedMemoryBytes=783791833.09}
+I0405 20:03:34.695018       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=19.00, memoryBytes=702443520.00, smoothedCpuMilli=28.14, smoothedMemoryBytes=713492705.28}
+I0405 20:03:34.695021       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=26.00, memoryBytes=742375424.00, smoothedCpuMilli=51.89, smoothedMemoryBytes=741512855.55}
+I0405 20:03:34.695023       1 kdapt.go:80] -----------------------------------------------------------------
+I0405 20:03:44.699764       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=160.00, memoryBytes=1451147264.00, smoothedCpuMilli=153.55, smoothedMemoryBytes=1451245262.03}
+I0405 20:03:44.699798       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=391.00, memoryBytes=903962624.00, smoothedCpuMilli=138.66, smoothedMemoryBytes=819843070.36}
+I0405 20:03:44.699803       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=19.00, memoryBytes=702193664.00, smoothedCpuMilli=25.40, smoothedMemoryBytes=710102992.90}
+I0405 20:03:44.699807       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=29.00, memoryBytes=742871040.00, smoothedCpuMilli=45.03, smoothedMemoryBytes=741920310.89}
+I0405 20:03:44.699810       1 kdapt.go:80] -----------------------------------------------------------------
+```
+```
+k8 get pods -o wide                                  
+NAME                                              READY   STATUS    RESTARTS   AGE   IP            NODE                   NOMINATED NODE   READINESS GATES
+static-pod-deployment-cpu-heavy-7f6fd9659-6snw7   1/1     Running   0          56s   10.244.2.34   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-gkhql   1/1     Running   0          56s   10.244.2.37   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-gtsfl   1/1     Running   0          56s   10.244.2.31   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-nv7fn   1/1     Running   0          56s   10.244.2.33   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-pfbnk   1/1     Running   0          56s   10.244.2.35   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-r4c6x   1/1     Running   0          56s   10.244.2.36   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-tlg45   1/1     Running   0          56s   10.244.2.38   scheduler-lab-worker   <none>           <none>
+static-pod-deployment-cpu-heavy-7f6fd9659-w5rl4   1/1     Running   0          56s   10.244.2.32   scheduler-lab-worker   <none>           <none>
+
+```

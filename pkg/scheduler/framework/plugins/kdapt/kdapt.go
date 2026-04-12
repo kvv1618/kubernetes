@@ -5,6 +5,7 @@ import (
 	"k8s.io/klog/v2"
 	"maps"
 	"math"
+	"sort"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -58,6 +59,27 @@ func New(
 	return k, nil
 }
 
+func (k *Kdapt) logMetrics() {
+	nodeNames := make([]string, 0, len(k.nodeMetrics))
+	for nodeName := range k.nodeMetrics {
+		nodeNames = append(nodeNames, nodeName)
+	}
+	sort.Strings(nodeNames)
+
+	for _, nodeName := range nodeNames {
+		metrics := k.nodeMetrics[nodeName]
+		klog.Infof(
+			"nodeMetrics {name=%s, cpuMilli=%.2f, memoryBytes=%.2f, smoothedCpuMilli=%.2f, smoothedMemoryBytes=%.2f}",
+			nodeName,
+			metrics.CPUMilli,
+			metrics.MemoryBytes,
+			metrics.SmoothedCPUMilli,
+			metrics.SmoothedMemoryBytes,
+		)
+	}
+	klog.Infof("-----------------------------------------------------------------")
+}
+
 func (k *Kdapt) runMetricsCollector(
 	ctx context.Context,
 	metricsClient *metricsclient.Clientset,
@@ -72,13 +94,14 @@ func (k *Kdapt) runMetricsCollector(
 		case <-ticker.C:
 			next, err := k.collectMetrics(ctx, metricsClient)
 			if err != nil {
+				klog.Errorf("error collecting metrics: %v", err)
 				continue
 			}
 			k.mutexLock.Lock()
 			k.nodeMetrics = next
 			k.mutexLock.Unlock()
 		}
-		klog.Infof("Metrics: %v", k.nodeMetrics)
+		k.logMetrics()
 	}
 }
 
@@ -151,7 +174,10 @@ func (k *Kdapt) Score(
 	rt, ok := k.nodeMetrics[nodeInfo.Node().Name]
 	k.mutexLock.RUnlock()
 	if !ok {
-		return 0, fwk.NewStatus(fwk.Error, "node metrics not found")
+		klog.Errorf("node metrics not found for node: %s", nodeInfo.Node().Name)
+		binPackScore := requestedCpuUtil*0.7 + requestedMemUtil*0.3
+		klog.Infof("binPackScore: %v", binPackScore)
+		return int64(binPackScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 	}
 
 	runTimeCpuUtil := clamp(rt.SmoothedCPUMilli/allocCpu, 0, 1)

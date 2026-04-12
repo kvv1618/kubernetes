@@ -1,89 +1,105 @@
-apiVersion: apps/v1
-kind: Deployment
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: scheduler-lab-worker-resource-requests
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: resource-requests
+#   template:
+#     metadata:
+#       labels:
+#         app: resource-requests
+#     spec:
+#       schedulerName: kdapt-scheduler
+#       containers:
+#         - name: scheduler-lab-worker-resource-requests-container
+#           image: nginx:latest
+#           resources:
+#             requests:
+#               cpu: "1000m"
+#               memory: "1Gi"
+#             limits:
+#               cpu: "1000m"
+#               memory: "1Gi"
+#           ports:
+#             - containerPort: 80
+#       nodeSelector:
+#         kubernetes.io/hostname: scheduler-lab-worker
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: scheduler-lab-worker2-resource-requests
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: resource-requests
+#   template:
+#     metadata:
+#       labels:
+#         app: resource-requests
+#     spec:
+#       schedulerName: kdapt-scheduler
+#       nodeSelector:
+#         kubernetes.io/hostname: scheduler-lab-worker2
+#       containers:
+#         - name: scheduler-lab-worker2-resource-requests-container
+#           image: nginx:latest
+#           resources:
+#             requests:
+#               cpu: "3000m"
+#               memory: "1Gi"
+#             limits:
+#               cpu: "3000m"
+#               memory: "1Gi"
+#           ports:
+#             - containerPort: 80
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: scheduler-lab-worker3-resource-requests
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: resource-requests
+#   template:
+#     metadata:
+#       labels:
+#         app: resource-requests
+#     spec:
+#       schedulerName: kdapt-scheduler
+#       nodeSelector:
+#         kubernetes.io/hostname: scheduler-lab-worker3
+#       containers:
+#         - name: scheduler-lab-worker3-resource-requests-container
+#           image: nginx:latest
+#           resources:
+#             requests:
+#               cpu: "4000m"
+#               memory: "3Gi"
+#             limits:
+#               cpu: "4000m"
+#               memory: "3Gi"
+#           ports:
+#             - containerPort: 80
+apiVersion: v1
+kind: Pod
 metadata:
-  name: scheduler-lab-worker-resource-requests
+  name: cpu-burn-node1
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: resource-requests
-  template:
-    metadata:
-      labels:
-        app: resource-requests
-    spec:
-      schedulerName: kdapt-scheduler
-      containers:
-        - name: scheduler-lab-worker-resource-requests-container
-          image: nginx:latest
-          resources:
-            requests:
-              cpu: "1000m"
-              memory: "1Gi"
-            limits:
-              cpu: "1000m"
-              memory: "1Gi"
-          ports:
-            - containerPort: 80
-      nodeSelector:
-        kubernetes.io/hostname: scheduler-lab-worker
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: scheduler-lab-worker2-resource-requests
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: resource-requests
-  template:
-    metadata:
-      labels:
-        app: resource-requests
-    spec:
-      schedulerName: kdapt-scheduler
-      nodeSelector:
-        kubernetes.io/hostname: scheduler-lab-worker2
-      containers:
-        - name: scheduler-lab-worker2-resource-requests-container
-          image: nginx:latest
-          resources:
-            requests:
-              cpu: "3000m"
-              memory: "1Gi"
-            limits:
-              cpu: "3000m"
-              memory: "1Gi"
-          ports:
-            - containerPort: 80
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: scheduler-lab-worker3-resource-requests
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: resource-requests
-  template:
-    metadata:
-      labels:
-        app: resource-requests
-    spec:
-      schedulerName: kdapt-scheduler
-      nodeSelector:
-        kubernetes.io/hostname: scheduler-lab-worker3
-      containers:
-        - name: scheduler-lab-worker3-resource-requests-container
-          image: nginx:latest
-          resources:
-            requests:
-              cpu: "4000m"
-              memory: "3Gi"
-            limits:
-              cpu: "4000m"
-              memory: "3Gi"
-          ports:
-            - containerPort: 80
+  schedulerName: kdapt-scheduler
+  containers:
+    - name: burn
+      image: busybox
+      command: ["/bin/sh", "-c"]
+      args:
+        - "while true; do :; done"
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: "64Mi"
