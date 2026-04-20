@@ -578,6 +578,10 @@ func (k *Kdapt) Score(
 
 ## Next Steps:
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
+- Validate against kube-scheduler 
+  - pod placement distribution by node
+  - scheduling latency per pod
+  - how tightly each scheduler packs before spilling to the next node
 - Explore more complex scheduling scenarios with dynamic resource requests.
 
 
