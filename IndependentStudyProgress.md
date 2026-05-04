@@ -577,6 +577,397 @@ func (k *Kdapt) Score(
     - We now have a adaptive runtime-aware bin-packing scheduler that intentionally prefers consolidation (packing) while applying safety penalties to prevent overload.
 
 ## Next Steps:
+- Staged arrivals
+```
+Profile breakdown before the YAML:
+
+| Deployment | CPU Request | Memory Request | Purpose |
+|------------|-------------|----------------|---------|
+| cpu-heavy | 3000m | 256Mi | Stresses CPU scheduling |
+| memory-heavy | 200m | 2Gi | Stresses memory scheduling |
+| balanced | 1000m | 1Gi | General workload |
+| minimal | 100m | 128Mi | Low-priority / best-effort |
+| cpu-only | 2000m | (none) | CPU request only |
+| memory-only | (none) | 1536Mi | Memory request only |
+
+
+# Node capacity: 10000m CPU, 8Gi memory — 3 node target
+
+# --- CPU-heavy: burns CPU, barely touches memory ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-heavy
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-heavy
+  template:
+    metadata:
+      labels:
+        app: cpu-heavy
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-heavy
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "256Mi"
+            limits:
+              cpu: "3000m"
+              memory: "256Mi"
+
+---
+# Memory-heavy: large memory footprint, minimal CPU
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-memory-heavy
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: memory-heavy
+  template:
+    metadata:
+      labels:
+        app: memory-heavy
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: memory-heavy
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "2Gi"
+            limits:
+              cpu: "200m"
+              memory: "2Gi"
+
+---
+# Balanced: moderate CPU and memory — general workload simulation
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-balanced
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: balanced
+  template:
+    metadata:
+      labels:
+        app: balanced
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: balanced
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+---
+# Minimal: tiny requests — best-effort / low-priority workloads
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-minimal
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: minimal
+  template:
+    metadata:
+      labels:
+        app: minimal
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: minimal
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+
+---
+# CPU-only: requests CPU but no memory request
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-only
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-only
+  template:
+    metadata:
+      labels:
+        app: cpu-only
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-only
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "2000m"
+
+---
+# Memory-only: requests memory but no CPU request
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-memory-only
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: memory-only
+  template:
+    metadata:
+      labels:
+        app: memory-only
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: memory-only
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "1536Mi"
+Scheduling notes:
+
+cpu-heavy at 3000m means max 3 of them fit per node CPU-wise — good for testing bin-packing.
+memory-heavy at 2Gi means max 4 fit per node memory-wise — will compete with other memory consumers.
+cpu-only / memory-only are useful for testing how your kdapt-scheduler handles one-dimensional resource pressure.
+All use replicas: 3 to match your 3-pods-per-node pattern.
+staticpods.yaml
+These are all requests based. I need to have a mix of requests and actual utilization.
+Good point — nginx just idles, so requests don't reflect real utilization. To get actual resource consumption you need a stress workload. Here's a mix using polinux/stress for active pods and nginx for idle/over-provisioned ones:
+
+Profile summary:
+
+Deployment	Requests (CPU / Mem)	Actual Usage	Pattern
+over-prov-cpu	3000m / 512Mi	~100m / ~50Mi	Over-provisioned CPU
+over-prov-mem	500m / 2Gi	~100m / ~200Mi	Over-provisioned Memory
+cpu-matched	2000m / 256Mi	~2000m / ~10Mi	CPU well-matched
+mem-matched	200m / 1Gi	~200m / ~900Mi	Memory well-matched
+cpu-hungry	500m / 256Mi	~2000m / ~10Mi	Under-provisioned CPU (bursts past request)
+mem-hungry	200m / 512Mi	~200m / ~1.5Gi	Under-provisioned Memory (bursts past request)
+
+# Node capacity: 10000m CPU, 8Gi mem | 3 pods/node | schedulerName: kdapt-scheduler
+
+# --- Over-provisioned CPU: requested a lot, uses almost nothing ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-over-prov-cpu
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: over-prov-cpu
+  template:
+    metadata:
+      labels:
+        app: over-prov-cpu
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: over-prov-cpu
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "512Mi"
+            limits:
+              cpu: "3000m"
+              memory: "512Mi"
+          # Actual usage: ~100m CPU, ~50Mi mem (nginx idle)
+
+---
+# Over-provisioned Memory: large memory request, barely uses it
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-over-prov-mem
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: over-prov-mem
+  template:
+    metadata:
+      labels:
+        app: over-prov-mem
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: over-prov-mem
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+          # Actual usage: ~100m CPU, ~200Mi mem (nginx idle)
+
+---
+# CPU well-matched: request ~= actual usage (stresses 2 cores)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-matched
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-matched
+  template:
+    metadata:
+      labels:
+        app: cpu-matched
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-matched
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--cpu", "2", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "2000m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "256Mi"
+          # Actual usage: ~2000m CPU, ~10Mi mem
+
+---
+# Memory well-matched: request ~= actual usage (allocates 900Mi)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-mem-matched
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mem-matched
+  template:
+    metadata:
+      labels:
+        app: mem-matched
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: mem-matched
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--vm", "1", "--vm-bytes", "900M", "--vm-keep", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "1Gi"
+            limits:
+              cpu: "200m"
+              memory: "1Gi"
+          # Actual usage: ~200m CPU, ~900Mi mem
+
+---
+# CPU under-provisioned: scheduler sees 500m, pod actually burns ~2000m
+# No CPU limit so it can burst; scheduler will place based on 500m request only
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-hungry
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-hungry
+  template:
+    metadata:
+      labels:
+        app: cpu-hungry
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-hungry
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--cpu", "2", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            # No limits — pod bursts beyond its request
+          # Actual usage: ~2000m CPU, ~10Mi mem
+
+---
+# Memory under-provisioned: scheduler sees 512Mi, pod actually allocates ~1.5Gi
+# No memory limit so it can burst; useful to stress node memory beyond scheduled view
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-mem-hungry
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mem-hungry
+  template:
+    metadata:
+      labels:
+        app: mem-hungry
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: mem-hungry
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--vm", "1", "--vm-bytes", "1500M", "--vm-keep", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            # No memory limit — pod bursts to 1.5Gi past its 512Mi request
+          # Actual usage: ~200m CPU, ~1.5Gi mem
+```
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
 - Validate against kube-scheduler 
   - pod placement distribution by node
@@ -586,3 +977,146 @@ func (k *Kdapt) Score(
 
 
 ## To Document:
+- CPU burst experiment with default kube-scheduler and compare the results with kdapt-scheduler
+- Discuss on how tightly each scheduler packs before spilling to the next node
+- Node placement:
+```bash
+k8 get pods -o wide
+NAME                                              READY   STATUS    RESTARTS   AGE    IP            NODE                    NOMINATED NODE   READINESS GATES
+static-pod-deployment-cpu-heavy-768b5fbdd-7c9w5   1/1     Running   0          118s   10.244.1.3    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-bn9qq   1/1     Running   0          118s   10.244.3.3    scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-dscms   1/1     Running   0          118s   10.244.1.4    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-dxrr2   1/1     Running   0          118s   10.244.2.13   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-gq6f6   1/1     Running   0          118s   10.244.1.2    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-rh7q7   1/1     Running   0          118s   10.244.2.12   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-xgn6m   1/1     Running   0          118s   10.244.2.11   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-768b5fbdd-z69jz   1/1     Running   0          118s   10.244.3.4    scheduler-lab-worker3   <none>           <none>
+```
+- Node usage:
+```bash
+k8 top nodes
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+scheduler-lab-control-plane   143m         1%       1160Mi          14%
+scheduler-lab-worker          39m          0%       751Mi           9%
+scheduler-lab-worker2         36m          0%       650Mi           8%
+scheduler-lab-worker3         30m          0%       673Mi           8%
+```
+- Node usage with kdapt-scheduler:
+```bash
+ k8 top nodes
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+scheduler-lab-control-plane   160m         1%       1163Mi          14%
+scheduler-lab-worker          142m         1%       825Mi           10%
+scheduler-lab-worker2         30m          0%       601Mi           7%
+scheduler-lab-worker3         40m          0%       644Mi           8%
+```
+- Memory Heavy burst experiment: (Because memory is treated more conservatively in the scoring algorithm, it is expected that the scheduler will prefer spreading the pods across nodes rather than packing them on a single node, to avoid memory pressure and potential OOM kills.)
+- Kubescheduler:
+```bash
+k8 get pods -o wide
+NAME                                            READY   STATUS    RESTARTS   AGE   IP            NODE                    NOMINATED NODE   READINESS GATES
+static-pod-deployment-cpu-heavy-c5795f9-7klj8   1/1     Running   0          8s    10.244.3.5    scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-7lxzb   1/1     Running   0          8s    10.244.2.22   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-gddmg   1/1     Running   0          8s    10.244.1.7    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-npj52   1/1     Running   0          8s    10.244.2.23   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-p6xjv   1/1     Running   0          8s    10.244.1.5    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-prxj9   1/1     Running   0          8s    10.244.3.6    scheduler-lab-worker3   <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-rppk8   1/1     Running   0          8s    10.244.1.6    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-c5795f9-xbjbh   1/1     Running   0          8s    10.244.3.7    scheduler-lab-worker3   <none>           <none>
+```
+```bash
+k8 top nodes
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+scheduler-lab-control-plane   149m         1%       1167Mi          14%
+scheduler-lab-worker          35m          0%       739Mi           9%
+scheduler-lab-worker2         36m          0%       644Mi           8%
+scheduler-lab-worker3         39m          0%       696Mi           8%
+```
+- Kdapt-scheduler:
+```bash
+I0504 22:38:09.216170       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=56.00, memoryBytes=743059456.00, smoothedCpuMilli=39.95, smoothedMemoryBytes=763433630.87}
+I0504 22:38:09.216177       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=99.00, memoryBytes=629538816.00, smoothedCpuMilli=50.12, smoothedMemoryBytes=658346476.48}
+I0504 22:38:09.216181       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=92.00, memoryBytes=682819584.00, smoothedCpuMilli=51.18, smoothedMemoryBytes=713263989.88}
+I0504 22:38:09.216185       1 kdapt.go:80] -----------------------------------------------------------------
+I0504 22:38:19.212364       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=147.00, memoryBytes=1229541376.00, smoothedCpuMilli=148.54, smoothedMemoryBytes=1226810603.14}
+I0504 22:38:19.212414       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=28.00, memoryBytes=743329792.00, smoothedCpuMilli=36.37, smoothedMemoryBytes=757402479.21}
+I0504 22:38:19.212418       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=20.00, memoryBytes=630169600.00, smoothedCpuMilli=41.09, smoothedMemoryBytes=649893413.54}
+I0504 22:38:19.212441       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=22.00, memoryBytes=683511808.00, smoothedCpuMilli=42.42, smoothedMemoryBytes=704338335.32}
+I0504 22:38:19.212447       1 kdapt.go:80] -----------------------------------------------------------------
+I0504 22:38:26.312126       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-hlc5l node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.07
+I0504 22:38:26.312176       1 kdapt.go:229] Final score: 0.07045380288849411
+I0504 22:38:26.312144       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-hlc5l node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.312205       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.312238       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-hlc5l node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.312271       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.314701       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-ppxwb node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.12
+I0504 22:38:26.314720       1 kdapt.go:229] Final score: 0.11590463314917593
+I0504 22:38:26.314725       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-ppxwb node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.314727       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.314729       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-ppxwb node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.314732       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.315201       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-swdms node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.15
+I0504 22:38:26.315231       1 kdapt.go:229] Final score: 0.1545351911556054
+I0504 22:38:26.315240       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-swdms node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.315248       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.315257       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-swdms node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.315263       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.318300       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-f7nz9 node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.19
+I0504 22:38:26.318315       1 kdapt.go:229] Final score: 0.1877029676349084
+I0504 22:38:26.318319       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-f7nz9 node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.318322       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.318325       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-f7nz9 node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.318327       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.323230       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-2jmpw node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.22
+I0504 22:38:26.323249       1 kdapt.go:229] Final score: 0.21540796258708508
+I0504 22:38:26.323257       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-2jmpw node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323260       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.323262       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-2jmpw node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323264       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.323512       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-jp4gc node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.24
+I0504 22:38:26.323524       1 kdapt.go:229] Final score: 0.2376501760121353
+I0504 22:38:26.323529       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-jp4gc node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323541       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.323544       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-jp4gc node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323547       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.323688       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-87cv6 node=scheduler-lab-worker reqCPU=0.02 rtCPU=0.00 mismatchCPU=0.02 projectedCPU=0.02 final=0.25
+I0504 22:38:26.323697       1 kdapt.go:229] Final score: 0.2544296079100591
+I0504 22:38:26.323700       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-87cv6 node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323703       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:26.323705       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-87cv6 node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.323707       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.325517       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-2f8ss node=scheduler-lab-worker3 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.325532       1 kdapt.go:229] Final score: 0.057057625945172614
+I0504 22:38:26.325450       1 kdapt.go:219] pod=static-pod-deployment-cpu-heavy-7cbc98d99b-2f8ss node=scheduler-lab-worker2 reqCPU=0.01 rtCPU=0.00 mismatchCPU=0.01 projectedCPU=0.01 final=0.06
+I0504 22:38:26.325583       1 kdapt.go:229] Final score: 0.056745145085702046
+I0504 22:38:29.210437       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=147.00, memoryBytes=1229541376.00, smoothedCpuMilli=148.08, smoothedMemoryBytes=1227629835.00}
+I0504 22:38:29.210479       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=28.00, memoryBytes=743329792.00, smoothedCpuMilli=33.86, smoothedMemoryBytes=753180673.05}
+I0504 22:38:29.210484       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=20.00, memoryBytes=630169600.00, smoothedCpuMilli=34.76, smoothedMemoryBytes=643976269.48}
+I0504 22:38:29.210487       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=22.00, memoryBytes=683511808.00, smoothedCpuMilli=36.30, smoothedMemoryBytes=698090377.12}
+I0504 22:38:29.210492       1 kdapt.go:80] -----------------------------------------------------------------
+I0504 22:38:39.209823       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=155.00, memoryBytes=1227595776.00, smoothedCpuMilli=150.16, smoothedMemoryBytes=1227619617.30}
+I0504 22:38:39.209852       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=117.00, memoryBytes=850411520.00, smoothedCpuMilli=58.80, smoothedMemoryBytes=782349927.13}
+I0504 22:38:39.209856       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=23.00, memoryBytes=630263808.00, smoothedCpuMilli=31.23, smoothedMemoryBytes=639862531.03}
+I0504 22:38:39.209859       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=31.00, memoryBytes=682491904.00, smoothedCpuMilli=34.71, smoothedMemoryBytes=693410835.19}
+I0504 22:38:39.209862       1 kdapt.go:80] -----------------------------------------------------------------
+```
+```
+k8 get pods -o wide
+NAME                                               READY   STATUS    RESTARTS   AGE   IP            NODE                    NOMINATED NODE   READINESS GATES
+static-pod-deployment-cpu-heavy-7cbc98d99b-2f8ss   1/1     Running   0          81s   10.244.1.8    scheduler-lab-worker2   <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-2jmpw   1/1     Running   0          81s   10.244.2.27   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-87cv6   1/1     Running   0          81s   10.244.2.30   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-f7nz9   1/1     Running   0          81s   10.244.2.28   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-hlc5l   1/1     Running   0          81s   10.244.2.25   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-jp4gc   1/1     Running   0          81s   10.244.2.29   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-ppxwb   1/1     Running   0          81s   10.244.2.26   scheduler-lab-worker    <none>           <none>
+static-pod-deployment-cpu-heavy-7cbc98d99b-swdms   1/1     Running   0          81s   10.244.2.24   scheduler-lab-worker    <none>           <none>
+```
+```
+k8 top nodes
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+scheduler-lab-control-plane   156m         1%       1170Mi          14%
+scheduler-lab-worker          53m          0%       817Mi           10%
+scheduler-lab-worker2         30m          0%       615Mi           7%
+scheduler-lab-worker3         32m          0%       654Mi           8%
+```

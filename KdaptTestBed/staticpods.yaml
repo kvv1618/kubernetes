@@ -21,7 +21,8 @@ spec:
             - containerPort: 80
           resources:
             requests:
-              cpu: "1000m"
+              # cpu: "1000m"
+              "memory": "1024Mi"
 # ---
 # apiVersion: apps/v1
 # kind: Deployment
