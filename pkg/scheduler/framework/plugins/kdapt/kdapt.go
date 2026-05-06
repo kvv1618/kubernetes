@@ -158,6 +158,7 @@ func (k *Kdapt) Score(
 	pod *v1.Pod,
 	nodeInfo fwk.NodeInfo,
 ) (int64, *fwk.Status) {
+	const epsilonUtil = 0.0001
 	allocatable := nodeInfo.GetAllocatable()
 	requested := nodeInfo.GetRequested()
 
@@ -180,11 +181,32 @@ func (k *Kdapt) Score(
 		return int64(binPackScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 	}
 
-	runTimeCpuUtil := clamp(rt.SmoothedCPUMilli/allocCpu, 0, 1)
-	runTimeMemUtil := clamp(rt.SmoothedMemoryBytes/allocMem, 0, 1)
+	runTimeCpuUtil := clamp(rt.CPUMilli/allocCpu, 0, 1)
+	runTimeMemUtil := clamp(rt.MemoryBytes/allocMem, 0, 1)
+	smoothedCpuUtil := clamp(rt.SmoothedCPUMilli/allocCpu, 0, 1)
+	smoothedMemUtil := clamp(rt.SmoothedMemoryBytes/allocMem, 0, 1)
 
-	cpuMismatch := clamp(math.Abs(requestedCpuUtil-runTimeCpuUtil), 0, 1)
-	memMismatch := clamp(math.Abs(requestedMemUtil-runTimeMemUtil), 0, 1)
+	// beta — how much has reality diverged from the trend
+	// When raw ≈ smoothed: EMA is tracking reality well → trust smoothed (beta ≈ 0)
+	// When raw >> smoothed: spike in progress, EMA hasn't caught up → trust raw (beta → 1)
+	// When raw << smoothed: recovery after termination, EMA still high → trust raw (beta → 1)
+	betaCpu := clamp(
+		math.Abs(runTimeCpuUtil-smoothedCpuUtil)/(math.Max(runTimeCpuUtil, smoothedCpuUtil)+epsilonUtil),
+		0, 1,
+	)
+
+	betaMem := clamp(
+		math.Abs(runTimeMemUtil-smoothedMemUtil)/(math.Max(runTimeMemUtil, smoothedMemUtil)+epsilonUtil),
+		0, 1,
+	)
+
+	// beta=0 (stable):    effective = smoothed        (EMA is tracking fine, use its stability)
+	// beta=1 (diverging): effective = raw             (EMA is stale, use real-time signal)
+	effectiveCpuUtil := (1-betaCpu)*smoothedCpuUtil + betaCpu*runTimeCpuUtil
+	effectiveMemUtil := (1-betaMem)*smoothedMemUtil + betaMem*runTimeMemUtil
+
+	cpuMismatch := clamp(math.Abs(requestedCpuUtil-effectiveCpuUtil), 0, 1)
+	memMismatch := clamp(math.Abs(requestedMemUtil-effectiveMemUtil), 0, 1)
 
 	requestedCpuByPod, requestedMemByPod := int64(0), int64(0)
 	for _, container := range pod.Spec.Containers {
@@ -201,42 +223,29 @@ func (k *Kdapt) Score(
 	alphaCpu := clamp(0.3+cpuMismatch*0.8, 0, 1) // 0.3 is the base weight, when there is no mismatch.
 	alphaMem := clamp(0.1+memMismatch*0.4, 0, 1)
 	// Score using projectedUtil vs runtimeUtil - estimate placement quality
-	cpuScore := (1-alphaCpu)*projectedCpuUtil + alphaCpu*runTimeCpuUtil
-	memScore := (1-alphaMem)*projectedMemUtil + alphaMem*runTimeMemUtil
+	cpuScore := (1-alphaCpu)*projectedCpuUtil + alphaCpu*effectiveCpuUtil
+	memScore := (1-alphaMem)*projectedMemUtil + alphaMem*effectiveMemUtil
 
 	wCpu := 0.6
 	wMem := 0.4
 	penality := 0.0
-	if runTimeCpuUtil > 0.8 {
+	if effectiveCpuUtil > 0.8 {
 		penality += 0.2 // less penalty for higher cpu utilization, because CPU is compressible
 	}
-	if runTimeMemUtil > 0.8 {
+	if effectiveMemUtil > 0.8 {
 		penality += 0.25
 	}
 
 	finalScore := wCpu*cpuScore + wMem*memScore - penality
 
 	klog.Infof(
-		"pod=%s node=%s reqCPU=%.2f rtCPU=%.2f mismatchCPU=%.2f projectedCPU=%.2f final=%.2f",
-		pod.Name,
-		nodeInfo.Node().Name,
-		requestedCpuUtil,
-		runTimeCpuUtil,
-		cpuMismatch,
-		projectedCpuUtil,
-		finalScore,
+		"pod=%s node=%s | cpu: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | mem: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | penalty=%.2f final=%.4f",
+		pod.Name, nodeInfo.Node().Name,
+		requestedCpuUtil, effectiveCpuUtil, cpuMismatch, projectedCpuUtil, alphaCpu,
+		requestedMemUtil, effectiveMemUtil, memMismatch, projectedMemUtil, alphaMem,
+		penality, finalScore,
 	)
-	klog.Infof(
-		"pod=%s node=%s reqMem=%.2f rtMem=%.2f mismatchMem=%.2f projectedMem=%.2f final=%.2f",
-		pod.Name,
-		nodeInfo.Node().Name,
-		requestedMemUtil,
-		runTimeMemUtil,
-		memMismatch,
-		projectedMemUtil,
-		finalScore,
-	)
-	klog.Infof("Final score: %v", finalScore)
+
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 
 }

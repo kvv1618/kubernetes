@@ -37,6 +37,7 @@ _Note: The following documentation is based on hands-on implementation on an ARM
     - Refer to: https://kubernetes.io/docs/reference/scheduling/config/#extension-points
 - The binding cycle is a separate cycle that is responsible for binding the pod to the selected node (The last three stages mentioned above are part of the binding cycle).
 - For all the feasible nodes that pass the filtering stage, the scheduler calls the Score() method of the ScorePlugin to assign a score(between 0-100) to each node per pod. The scores are then normalized and aggregated based on the weight assigned to each plugin in the scheduler configuration. The node with the highest score is selected for scheduling the pod.
+- The score plugin is called concurrently for all feasible nodes in a single scheduling cycle - one goroutine per node.
 
 ## Default K8s Scheduling:
 - The default enabled plugins: https://kubernetes.io/docs/reference/scheduling/config/#scheduling-plugins
