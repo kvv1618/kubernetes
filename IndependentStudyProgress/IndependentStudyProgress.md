@@ -501,8 +501,6 @@ if effectiveMemUtil > 0.8 {
 }
 ```
 
-
-
 ## Next Steps:
 - Staged arrivals
 
@@ -521,3 +519,171 @@ if effectiveMemUtil > 0.8 {
   - scheduling latency per pod
   - how tightly each scheduler packs before spilling to the next node
 - Explore more complex scheduling scenarios with dynamic resource requests.
+
+To Document:
+- Staged arrivals output:
+  -  `bash deploy.sh gradual 15`
+```bash 
+I0506 22:41:33.019445       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=139.00, memoryBytes=857223168.00, smoothedCpuMilli=138.59, smoothedMemoryBytes=857120176.01}
+I0506 22:41:33.019488       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=30.00, memoryBytes=274472960.00, smoothedCpuMilli=29.80, smoothedMemoryBytes=274738129.31}
+I0506 22:41:33.019494       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=23.00, memoryBytes=244834304.00, smoothedCpuMilli=26.22, smoothedMemoryBytes=241479145.51}
+I0506 22:41:33.019497       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=18.00, memoryBytes=259493888.00, smoothedCpuMilli=22.93, smoothedMemoryBytes=261324736.91}
+I0506 22:41:33.019500       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:41:43.017898       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=139.00, memoryBytes=857223168.00, smoothedCpuMilli=138.71, smoothedMemoryBytes=857151073.61}
+I0506 22:41:43.017950       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=30.00, memoryBytes=274472960.00, smoothedCpuMilli=29.86, smoothedMemoryBytes=274658578.51}
+I0506 22:41:43.017954       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=23.00, memoryBytes=244834304.00, smoothedCpuMilli=25.26, smoothedMemoryBytes=242485693.06}
+I0506 22:41:43.017957       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=18.00, memoryBytes=259493888.00, smoothedCpuMilli=21.45, smoothedMemoryBytes=260775482.24}
+I0506 22:41:43.017960       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:41:43.146642       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-6hv97 node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:43.146699       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-6hv97 node=scheduler-lab-worker | cpu: req=0.02 rt=0.00 mismatch=0.02 proj=0.22 alpha=0.31 | mem: req=0.03 rt=0.03 mismatch=0.00 proj=0.06 alpha=0.10 | penalty=0.00 final=0.1157
+I0506 22:41:43.146764       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-6hv97 node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:43.150111       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-mf57p node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:43.150135       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-mf57p node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:43.150155       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-mf57p node=scheduler-lab-worker | cpu: req=0.22 rt=0.00 mismatch=0.22 proj=0.42 alpha=0.47 | mem: req=0.06 rt=0.03 mismatch=0.03 proj=0.10 alpha=0.11 | penalty=0.00 final=0.1695
+I0506 22:41:43.150432       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-27b2t node=scheduler-lab-worker | cpu: req=0.42 rt=0.00 mismatch=0.42 proj=0.62 alpha=0.63 | mem: req=0.10 rt=0.03 mismatch=0.06 proj=0.13 alpha=0.13 | penalty=0.00 final=0.1845
+I0506 22:41:43.150445       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-27b2t node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:43.150450       1 kdapt.go:241] pod=deploy-cpu-matched-67dc8cb568-27b2t node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.21 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.04 alpha=0.11 | penalty=0.00 final=0.1031
+I0506 22:41:53.017947       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=135.00, memoryBytes=859275264.00, smoothedCpuMilli=137.60, smoothedMemoryBytes=857788330.73}
+I0506 22:41:53.018002       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=307.00, memoryBytes=306081792.00, smoothedCpuMilli=113.00, smoothedMemoryBytes=284085542.56}
+I0506 22:41:53.018006       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=24.00, memoryBytes=245166080.00, smoothedCpuMilli=24.88, smoothedMemoryBytes=243289809.14}
+I0506 22:41:53.018009       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=17.00, memoryBytes=258981888.00, smoothedCpuMilli=20.12, smoothedMemoryBytes=260237403.97}
+I0506 22:41:53.018012       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:41:58.317115       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-5d2pp node=scheduler-lab-worker | cpu: req=0.62 rt=0.02 mismatch=0.60 proj=0.64 alpha=0.78 | mem: req=0.13 rt=0.03 mismatch=0.10 proj=0.26 alpha=0.14 | penalty=0.00 final=0.1883
+I0506 22:41:58.317161       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-5d2pp node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0631
+I0506 22:41:58.317173       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-5d2pp node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0630
+I0506 22:41:58.324799       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-f7h26 node=scheduler-lab-worker | cpu: req=0.64 rt=0.02 mismatch=0.62 proj=0.66 alpha=0.79 | mem: req=0.26 rt=0.03 mismatch=0.23 proj=0.39 alpha=0.19 | penalty=0.00 final=0.2224
+I0506 22:41:58.324825       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-f7h26 node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0630
+I0506 22:41:58.324804       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-f7h26 node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0631
+I0506 22:41:58.325103       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-twpnq node=scheduler-lab-worker | cpu: req=0.66 rt=0.02 mismatch=0.64 proj=0.68 alpha=0.81 | mem: req=0.39 rt=0.03 mismatch=0.36 proj=0.52 alpha=0.24 | penalty=0.00 final=0.2508
+I0506 22:41:58.325111       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-twpnq node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0631
+I0506 22:41:58.325115       1 kdapt.go:241] pod=deploy-mem-matched-5c49fb5d9d-twpnq node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.03 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.14 alpha=0.11 | penalty=0.00 final=0.0630
+I0506 22:42:03.048279       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=135.00, memoryBytes=859275264.00, smoothedCpuMilli=136.82, smoothedMemoryBytes=858234410.71}
+I0506 22:42:03.048393       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=307.00, memoryBytes=306081792.00, smoothedCpuMilli=171.20, smoothedMemoryBytes=290684417.39}
+I0506 22:42:03.048401       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=24.00, memoryBytes=245166080.00, smoothedCpuMilli=24.62, smoothedMemoryBytes=243852690.40}
+I0506 22:42:03.048408       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=17.00, memoryBytes=258981888.00, smoothedCpuMilli=19.18, smoothedMemoryBytes=259860749.18}
+I0506 22:42:03.048413       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:13.027053       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=116.00, memoryBytes=856031232.00, smoothedCpuMilli=130.57, smoothedMemoryBytes=857573457.10}
+I0506 22:42:13.027199       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=6013.00, memoryBytes=306257920.00, smoothedCpuMilli=1923.74, smoothedMemoryBytes=295356468.17}
+I0506 22:42:13.027204       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=18.00, memoryBytes=245014528.00, smoothedCpuMilli=22.63, smoothedMemoryBytes=244201241.68}
+I0506 22:42:13.027207       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=18.00, memoryBytes=259325952.00, smoothedCpuMilli=18.83, smoothedMemoryBytes=259700310.02}
+I0506 22:42:13.027210       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:13.589178       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-22jqz node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.31 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.07 alpha=0.11 | penalty=0.00 final=0.1563
+I0506 22:42:13.589240       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-22jqz node=scheduler-lab-worker | cpu: req=0.68 rt=0.47 mismatch=0.21 proj=0.98 alpha=0.47 | mem: req=0.52 rt=0.04 mismatch=0.49 proj=0.59 alpha=0.29 | penalty=0.00 final=0.6150
+I0506 22:42:13.589659       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-22jqz node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.31 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.07 alpha=0.11 | penalty=0.00 final=0.1563
+I0506 22:42:13.609838       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-xzngv node=scheduler-lab-worker2 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.31 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.02 proj=0.07 alpha=0.11 | penalty=0.00 final=0.1563
+I0506 22:42:13.609898       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-xzngv node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.31 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.07 alpha=0.11 | penalty=0.00 final=0.1563
+I0506 22:42:13.611023       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-7nvjc node=scheduler-lab-worker2 | cpu: req=0.31 rt=0.00 mismatch=0.31 proj=0.61 alpha=0.55 | mem: req=0.07 rt=0.03 mismatch=0.04 proj=0.14 alpha=0.12 | penalty=0.00 final=0.2166
+I0506 22:42:13.611038       1 kdapt.go:241] pod=deploy-over-prov-cpu-5b74dd784d-7nvjc node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.31 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.07 alpha=0.11 | penalty=0.00 final=0.1563
+I0506 22:42:23.050235       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=248.00, memoryBytes=858140672.00, smoothedCpuMilli=165.80, smoothedMemoryBytes=857743621.57}
+I0506 22:42:23.050479       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=6530.00, memoryBytes=3203854336.00, smoothedCpuMilli=3305.62, smoothedMemoryBytes=1167905828.52}
+I0506 22:42:23.050484       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=102.00, memoryBytes=281964544.00, smoothedCpuMilli=46.44, smoothedMemoryBytes=255530232.38}
+I0506 22:42:23.050487       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=24.00, memoryBytes=259616768.00, smoothedCpuMilli=20.38, smoothedMemoryBytes=259675247.42}
+I0506 22:42:23.050491       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:28.820732       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-h9q57 node=scheduler-lab-worker2 | cpu: req=0.61 rt=0.01 mismatch=0.60 proj=0.66 alpha=0.78 | mem: req=0.14 rt=0.03 mismatch=0.11 proj=0.40 alpha=0.14 | penalty=0.00 final=0.2284
+I0506 22:42:28.820874       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-h9q57 node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.06 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.27 alpha=0.11 | penalty=0.00 final=0.1220
+I0506 22:42:28.824871       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-86jbl node=scheduler-lab-worker2 | cpu: req=0.66 rt=0.01 mismatch=0.65 proj=0.71 alpha=0.82 | mem: req=0.40 rt=0.03 mismatch=0.37 proj=0.66 alpha=0.25 | penalty=0.00 final=0.2815
+I0506 22:42:28.825168       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-86jbl node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.06 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.27 alpha=0.11 | penalty=0.00 final=0.1220
+I0506 22:42:28.828913       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-896kd node=scheduler-lab-worker2 | cpu: req=0.71 rt=0.01 mismatch=0.70 proj=0.76 alpha=0.86 | mem: req=0.66 rt=0.03 mismatch=0.63 proj=0.92 alpha=0.35 | penalty=0.00 final=0.3103
+I0506 22:42:28.829157       1 kdapt.go:241] pod=deploy-over-prov-mem-69ffc6cdd4-896kd node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.06 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.27 alpha=0.11 | penalty=0.00 final=0.1220
+I0506 22:42:33.060038       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=248.00, memoryBytes=858140672.00, smoothedCpuMilli=190.46, smoothedMemoryBytes=857862736.70}
+I0506 22:42:33.060167       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=6530.00, memoryBytes=3203854336.00, smoothedCpuMilli=4272.93, smoothedMemoryBytes=1778690380.77}
+I0506 22:42:33.060174       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=102.00, memoryBytes=281964544.00, smoothedCpuMilli=63.11, smoothedMemoryBytes=263460525.86}
+I0506 22:42:33.060176       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=24.00, memoryBytes=259616768.00, smoothedCpuMilli=21.47, smoothedMemoryBytes=259657703.59}
+I0506 22:42:33.060828       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:43.040235       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=216.00, memoryBytes=857182208.00, smoothedCpuMilli=198.12, smoothedMemoryBytes=857658578.09}
+I0506 22:42:43.040356       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=6638.00, memoryBytes=3204665344.00, smoothedCpuMilli=4982.45, smoothedMemoryBytes=2206482869.74}
+I0506 22:42:43.040363       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=50.00, memoryBytes=282664960.00, smoothedCpuMilli=59.18, smoothedMemoryBytes=269221856.10}
+I0506 22:42:43.040368       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=33.00, memoryBytes=259522560.00, smoothedCpuMilli=24.93, smoothedMemoryBytes=259617160.51}
+I0506 22:42:43.040371       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:44.052608       1 kdapt.go:241] pod=deploy-cpu-hungry-5464bdc95b-b2df7 node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.06 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.04 alpha=0.11 | penalty=0.00 final=0.0408
+I0506 22:42:44.050971       1 kdapt.go:241] pod=deploy-cpu-hungry-5464bdc95b-b2df7 node=scheduler-lab-worker2 | cpu: req=0.76 rt=0.01 mismatch=0.75 proj=0.81 alpha=0.90 | mem: req=0.92 rt=0.03 mismatch=0.89 proj=0.95 alpha=0.46 | penalty=0.00 final=0.2639
+I0506 22:42:44.064235       1 kdapt.go:241] pod=deploy-cpu-hungry-5464bdc95b-dd94w node=scheduler-lab-worker2 | cpu: req=0.81 rt=0.01 mismatch=0.80 proj=0.86 alpha=0.94 | mem: req=0.95 rt=0.03 mismatch=0.92 proj=0.99 alpha=0.47 | penalty=0.00 final=0.2484
+I0506 22:42:44.064933       1 kdapt.go:241] pod=deploy-cpu-hungry-5464bdc95b-dd94w node=scheduler-lab-worker3 | cpu: req=0.01 rt=0.00 mismatch=0.01 proj=0.06 alpha=0.31 | mem: req=0.01 rt=0.03 mismatch=0.03 proj=0.04 alpha=0.11 | penalty=0.00 final=0.0408
+I0506 22:42:53.146950       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=208.00, memoryBytes=858710016.00, smoothedCpuMilli=201.09, smoothedMemoryBytes=857974009.46}
+I0506 22:42:53.148695       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=6580.00, memoryBytes=3208290304.00, smoothedCpuMilli=5461.72, smoothedMemoryBytes=2507025100.02}
+I0506 22:42:53.148734       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=226.00, memoryBytes=350953472.00, smoothedCpuMilli=109.22, smoothedMemoryBytes=293741340.87}
+I0506 22:42:53.149221       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=86.00, memoryBytes=269578240.00, smoothedCpuMilli=43.25, smoothedMemoryBytes=262605484.36}
+I0506 22:42:53.149234       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:42:59.658850       1 kdapt.go:241] pod=deploy-mem-hungry-657fb577df-g8znt node=scheduler-lab-worker | cpu: req=0.98 rt=0.57 mismatch=0.41 proj=1.00 alpha=0.63 | mem: req=0.59 rt=0.32 mismatch=0.26 proj=0.65 alpha=0.21 | penalty=0.00 final=0.6691
+I0506 22:42:59.659371       1 kdapt.go:241] pod=deploy-mem-hungry-657fb577df-g8znt node=scheduler-lab-worker3 | cpu: req=0.06 rt=0.01 mismatch=0.05 proj=0.08 alpha=0.34 | mem: req=0.04 rt=0.03 mismatch=0.01 proj=0.10 alpha=0.10 | penalty=0.00 final=0.0716
+I0506 22:43:03.628881       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=216.00, memoryBytes=859525120.00, smoothedCpuMilli=205.56, smoothedMemoryBytes=858439342.62}
+I0506 22:43:03.629059       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=4246.00, memoryBytes=3208986624.00, smoothedCpuMilli=5097.00, smoothedMemoryBytes=2717613557.21}
+I0506 22:43:03.629074       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=3530.00, memoryBytes=354086912.00, smoothedCpuMilli=1135.46, smoothedMemoryBytes=311845012.21}
+I0506 22:43:03.629078       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=1991.00, memoryBytes=269447168.00, smoothedCpuMilli=627.57, smoothedMemoryBytes=264657989.45}
+I0506 22:43:03.629080       1 kdapt.go:80] -----------------------------------------------------------------
+I0506 22:43:14.747551       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-control-plane, cpuMilli=216.00, memoryBytes=859525120.00, smoothedCpuMilli=208.69, smoothedMemoryBytes=858765075.84}
+I0506 22:43:14.750521       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker, cpuMilli=4246.00, memoryBytes=3208986624.00, smoothedCpuMilli=4841.70, smoothedMemoryBytes=2865025477.25}
+I0506 22:43:14.750529       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker2, cpuMilli=3530.00, memoryBytes=354086912.00, smoothedCpuMilli=1853.82, smoothedMemoryBytes=324517582.15}
+I0506 22:43:14.750535       1 kdapt.go:71] nodeMetrics {name=scheduler-lab-worker3, cpuMilli=1991.00, memoryBytes=269447168.00, smoothedCpuMilli=1036.60, smoothedMemoryBytes=266094743.02}
+I0506 22:43:14.750540       1 kdapt.go:80] -----------------------------------------------------------------
+```
+```bash
+[18:41:43] Applying: cpu.yaml
+deployment.apps/deploy-cpu-matched created
+[18:41:43] Waiting 15s before next arrival...
+[18:41:58] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   135m         1%       819Mi           10%         
+scheduler-lab-worker          307m         3%       291Mi           3%          
+scheduler-lab-worker2         24m          0%       233Mi           2%          
+scheduler-lab-worker3         17m          0%       246Mi           3%          
+
+[18:41:58] Applying: mem.yaml
+deployment.apps/deploy-mem-matched created
+[18:41:58] Waiting 15s before next arrival...
+[18:42:13] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   116m         1%       816Mi           10%         
+scheduler-lab-worker          6013m        60%      292Mi           3%          
+scheduler-lab-worker2         18m          0%       233Mi           2%          
+scheduler-lab-worker3         18m          0%       247Mi           3%          
+
+[18:42:13] Applying: heavy-cpu-request.yaml
+deployment.apps/deploy-over-prov-cpu created
+[18:42:13] Waiting 15s before next arrival...
+[18:42:28] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   248m         2%       818Mi           10%         
+scheduler-lab-worker          6530m        65%      3055Mi          38%         
+scheduler-lab-worker2         102m         1%       268Mi           3%          
+scheduler-lab-worker3         24m          0%       247Mi           3%          
+
+[18:42:28] Applying: heavy-mem-request.yaml
+deployment.apps/deploy-over-prov-mem created
+[18:42:28] Waiting 15s before next arrival...
+[18:42:43] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   216m         2%       817Mi           10%         
+scheduler-lab-worker          6638m        66%      3056Mi          38%         
+scheduler-lab-worker2         50m          0%       269Mi           3%          
+scheduler-lab-worker3         33m          0%       247Mi           3%          
+
+[18:42:43] Applying: heavy-cpu-util.yaml
+deployment.apps/deploy-cpu-hungry created
+[18:42:44] Waiting 15s before next arrival...
+[18:42:59] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   208m         2%       818Mi           10%         
+scheduler-lab-worker          6580m        65%      3059Mi          39%         
+scheduler-lab-worker2         226m         2%       334Mi           4%          
+scheduler-lab-worker3         86m          0%       257Mi           3%          
+
+[18:42:59] Applying: heavy-mem-util.yaml
+deployment.apps/deploy-mem-hungry created
+[18:42:59] Waiting 15s before next arrival...
+[18:43:14] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   216m         2%       819Mi           10%         
+scheduler-lab-worker          4246m        42%      3060Mi          39%         
+scheduler-lab-worker2         3530m        35%      337Mi           4%          
+scheduler-lab-worker3         1991m        19%      256Mi           3%          
+
+[18:43:14] All workloads applied. Monitoring for 60s to observe scheduling decisions...
+[18:44:14] Final state:
+[18:44:14] --- Cluster snapshot ---
+NAME                          CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+scheduler-lab-control-plane   395m         3%       603Mi           7%          
+scheduler-lab-worker          3757m        37%      4479Mi          57%         
+scheduler-lab-worker2         2878m        28%      242Mi           3%          
+scheduler-lab-worker3         2539m        25%      1680Mi          21% 
+```
