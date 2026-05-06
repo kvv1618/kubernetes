@@ -226,6 +226,16 @@ func (k *Kdapt) Score(
 		projectedCpuUtil,
 		finalScore,
 	)
+	klog.Infof(
+		"pod=%s node=%s reqMem=%.2f rtMem=%.2f mismatchMem=%.2f projectedMem=%.2f final=%.2f",
+		pod.Name,
+		nodeInfo.Node().Name,
+		requestedMemUtil,
+		runTimeMemUtil,
+		memMismatch,
+		projectedMemUtil,
+		finalScore,
+	)
 	klog.Infof("Final score: %v", finalScore)
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
 
