@@ -1,0 +1,29 @@
+# Over-provisioned Memory: large memory request, barely uses it
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-over-prov-mem
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: over-prov-mem
+  template:
+    metadata:
+      labels:
+        app: over-prov-mem
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: over-prov-mem
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+          # Actual usage: ~100m CPU, ~200Mi mem (nginx idle)

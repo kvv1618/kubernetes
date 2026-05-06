@@ -1,0 +1,29 @@
+# CPU well-matched: request ~= actual usage (stresses 2 cores)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-matched
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-matched
+  template:
+    metadata:
+      labels:
+        app: cpu-matched
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-matched
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--cpu", "2", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "2000m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "256Mi"
+          # Actual usage: ~2000m CPU, ~10Mi mem

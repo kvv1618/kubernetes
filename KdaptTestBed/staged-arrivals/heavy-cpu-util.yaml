@@ -1,0 +1,28 @@
+# CPU under-provisioned: scheduler sees 500m, pod actually burns ~2000m
+# No CPU limit so it can burst; scheduler will place based on 500m request only
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-cpu-hungry
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cpu-hungry
+  template:
+    metadata:
+      labels:
+        app: cpu-hungry
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: cpu-hungry
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--cpu", "2", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            # No limits — pod bursts beyond its request
+          # Actual usage: ~2000m CPU, ~10Mi mem

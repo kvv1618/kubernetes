@@ -1,0 +1,29 @@
+# Memory well-matched: request ~= actual usage (allocates 900Mi)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-mem-matched
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mem-matched
+  template:
+    metadata:
+      labels:
+        app: mem-matched
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: mem-matched
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--vm", "1", "--vm-bytes", "900M", "--vm-keep", "--timeout", "36000"]
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "1Gi"
+            limits:
+              cpu: "200m"
+              memory: "1Gi"
+          # Actual usage: ~200m CPU, ~900Mi mem

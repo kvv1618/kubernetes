@@ -1,0 +1,29 @@
+# --- Over-provisioned CPU: requested a lot, uses almost nothing ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-over-prov-cpu
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: over-prov-cpu
+  template:
+    metadata:
+      labels:
+        app: over-prov-cpu
+    spec:
+      schedulerName: kdapt-scheduler
+      containers:
+        - name: over-prov-cpu
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "512Mi"
+            limits:
+              cpu: "3000m"
+              memory: "512Mi"
+          # Actual usage: ~100m CPU, ~50Mi mem (nginx idle)
