@@ -228,24 +228,30 @@ func (k *Kdapt) Score(
 
 	wCpu := 0.6
 	wMem := 0.4
-	penality := 0.0
+	weightedScore := wCpu*cpuScore + wMem*memScore
+
+	// Penality for projected utilization above a threshold, to avoid scheduling on nodes that are likely to become overloaded.
+	cpuPenality := 0.0
 	if projectedCpuUtil > 0.8 {
-		penality += 0.2 * (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 0.2 as projectedCpuUtil goes from 0.8 to 1.0
+		cpuPenality = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
 	}
+	memPenality := 0.0
 	if projectedMemUtil > 0.8 {
-		penality += 0.25 * (projectedMemUtil - 0.8) / 0.2 // Linear penality from 0 to 0.25 as projectedMemUtil goes from 0.8 to 1.0
-		// penality is higher for memory because memory pressure can lead to OOM kills, which is more disruptive than CPU contention in many cases.
+		memPenality = (projectedMemUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.8 to 1.0
 		// CPU is slastic vs memory is conservative.
 	}
 
-	finalScore := wCpu*cpuScore + wMem*memScore - penality
+	penalityFactor := clamp((1-wCpu)*cpuPenality+(1-wMem)*memPenality, 0, 1) // Overall penality factor based on CPU and memory penality, weighted by their importance in the score.
+	// penality is higher for memory because memory pressure can lead to OOM kills, which is more disruptive than CPU contention in many cases.
+
+	finalScore := clamp(weightedScore*(1-penalityFactor), 0, 1)
 
 	klog.Infof(
 		"pod=%s node=%s | cpu: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | mem: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | penalty=%.2f final=%.4f",
 		pod.Name, nodeInfo.Node().Name,
 		requestedCpuUtil, effectiveCpuUtil, cpuMismatch, projectedCpuUtil, alphaCpu,
 		requestedMemUtil, effectiveMemUtil, memMismatch, projectedMemUtil, alphaMem,
-		penality, finalScore,
+		penalityFactor, finalScore,
 	)
 
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
