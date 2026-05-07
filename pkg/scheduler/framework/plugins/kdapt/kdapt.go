@@ -69,7 +69,7 @@ func (k *Kdapt) logMetrics() {
 	for _, nodeName := range nodeNames {
 		metrics := k.nodeMetrics[nodeName]
 		klog.Infof(
-			"nodeMetrics {name=%s, cpuMilli=%.2f, memoryBytes=%.2f, smoothedCpuMilli=%.2f, smoothedMemoryBytes=%.2f}",
+			"nodeUsageMetrics {name=%s, cpuMilli=%.2f, memoryBytes=%.2f, smoothedCpuMilli=%.2f, smoothedMemoryBytes=%.2f}",
 			nodeName,
 			metrics.CPUMilli,
 			metrics.MemoryBytes,
@@ -229,11 +229,13 @@ func (k *Kdapt) Score(
 	wCpu := 0.6
 	wMem := 0.4
 	penality := 0.0
-	if effectiveCpuUtil > 0.8 {
-		penality += 0.2 // less penalty for higher cpu utilization, because CPU is compressible
+	if projectedCpuUtil > 0.8 {
+		penality += 0.2 * (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 0.2 as projectedCpuUtil goes from 0.8 to 1.0
 	}
-	if effectiveMemUtil > 0.8 {
-		penality += 0.25
+	if projectedMemUtil > 0.8 {
+		penality += 0.25 * (projectedMemUtil - 0.8) / 0.2 // Linear penality from 0 to 0.25 as projectedMemUtil goes from 0.8 to 1.0
+		// penality is higher for memory because memory pressure can lead to OOM kills, which is more disruptive than CPU contention in many cases.
+		// CPU is slastic vs memory is conservative.
 	}
 
 	finalScore := wCpu*cpuScore + wMem*memScore - penality

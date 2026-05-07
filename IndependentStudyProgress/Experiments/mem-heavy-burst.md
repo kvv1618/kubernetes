@@ -1,6 +1,6 @@
 # Experiment: Memory heavy burst scheduling with runtime-aware bin-packing
-  - The workload is a burst of 8 pods, each requesting 1Gi memory, using kdapt-scheduler
-  - Since memory is treated more conservatively in the scoring algorithm, it is expected that the scheduler will prefer spreading the pods across nodes rather than packing them on a single node, to avoid memory pressure and potential OOM kills.
+- The workload is a burst of 8 pods, each requesting 1Gi memory, using kdapt-scheduler
+- Since memory is treated more conservatively in the scoring algorithm, it is expected that the scheduler will prefer spreading the pods across nodes rather than packing them on a single node, to avoid memory pressure and potential OOM kills.
 ```bash
 apiVersion: apps/v1
 kind: Deployment

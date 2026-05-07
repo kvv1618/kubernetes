@@ -1,30 +1,30 @@
 # Experiment: CPU heavy burst scheduling with runtime-aware bin-packing
-  - The workload is a burst of 8 pods, each requesting 1000m CPU, using kdapt-scheduler
-  ```bash
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: static-pod-deployment-cpu-heavy
-  spec:
-    replicas: 8
-    selector:
-      matchLabels:
+- The workload is a burst of 8 pods, each requesting 1000m CPU, using kdapt-scheduler
+```bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: static-pod-deployment-cpu-heavy
+spec:
+replicas: 8
+selector:
+    matchLabels:
+    app: static-pod
+template:
+    metadata:
+    labels:
         app: static-pod
-    template:
-      metadata:
-        labels:
-          app: static-pod
-      spec:
-        schedulerName: kdapt-scheduler
-        containers:
-          - name: static-pod-container-cpu-heavy
-            image: nginx:latest
-            ports:
-              - containerPort: 80
-            resources:
-              requests:
-                cpu: "1000m"
-  ```
+    spec:
+    schedulerName: kdapt-scheduler
+    containers:
+        - name: static-pod-container-cpu-heavy
+        image: nginx:latest
+        ports:
+            - containerPort: 80
+        resources:
+            requests:
+            cpu: "1000m"
+```
 ## Before burst:
 - All nodes are underutilized, and the cluster is balanced.
 - Each node has approximately 35 milli CPU utilization and 703205376.00 bytes (703.20 MB) of memory utilization.
