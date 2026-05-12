@@ -228,30 +228,55 @@ func (k *Kdapt) Score(
 
 	wCpu := 0.6
 	wMem := 0.4
-	weightedScore := wCpu*cpuScore + wMem*memScore
+	// Design choise to keep wCpu + wMem = 1, so that weightedScore doesn't exceed 1
 
-	// Penality for projected utilization above a threshold, to avoid scheduling on nodes that are likely to become overloaded.
-	cpuPenality := 0.0
+	cpuPenalityFactor := 0.0
 	if projectedCpuUtil > 0.8 {
-		cpuPenality = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
-	}
-	memPenality := 0.0
-	if projectedMemUtil > 0.8 {
-		memPenality = (projectedMemUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.8 to 1.0
-		// CPU is slastic vs memory is conservative.
+		cpuPenalityFactor = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
 	}
 
-	penalityFactor := clamp((1-wCpu)*cpuPenality+(1-wMem)*memPenality, 0, 1) // Overall penality factor based on CPU and memory penality, weighted by their importance in the score.
-	// penality is higher for memory because memory pressure can lead to OOM kills, which is more disruptive than CPU contention in many cases.
-
-	finalScore := clamp(weightedScore*(1-penalityFactor), 0, 1)
+	finalScore := 0.0
+	if projectedMemUtil > 0.9 {
+		memPenality := (projectedMemUtil - 0.9) / 0.1 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.9 to 1.0
+		finalScore = 0.5 * clamp(1.0-memPenality, 0, 1)
+		//Memory safe bin-packing, whih cnever exceeds 0.5 score if memory is projected to be above 90% utilization, regardless of CPU score.
+	} else {
+		penalisedScore := wCpu*cpuScore*(1-cpuPenalityFactor) + wMem*memScore // Apply CPU penality to the CPU score.
+		finalScore = 0.5 * clamp(penalisedScore, 0, 1)
+		// CPU is elastic, so we allow higher CPU utilization but apply a penality factor to the score as projected CPU utilization approaches 100%.
+	}
 
 	klog.Infof(
-		"pod=%s node=%s | cpu: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | mem: req=%.2f rt=%.2f mismatch=%.2f proj=%.2f alpha=%.2f | penalty=%.2f final=%.4f",
-		pod.Name, nodeInfo.Node().Name,
-		requestedCpuUtil, effectiveCpuUtil, cpuMismatch, projectedCpuUtil, alphaCpu,
-		requestedMemUtil, effectiveMemUtil, memMismatch, projectedMemUtil, alphaMem,
-		penalityFactor, finalScore,
+		"pod=%s, node=%s, requestedCpuUtil=%.2f, requestedMemUtil=%.2f, "+
+			"runTimeCpuUtil=%.2f, runTimeMemUtil=%.2f, "+
+			"smoothedCpuUtil=%.2f, smoothedMemUtil=%.2f, "+
+			"betaCpu=%.2f, betaMem=%.2f, "+
+			"effectiveCpuUtil=%.2f, effectiveMemUtil=%.2f, "+
+			"cpuMismatch=%.2f, memMismatch=%.2f, "+
+			"projectedCpuUtil=%.2f, projectedMemUtil=%.2f, "+
+			"alphaCpu=%.2f, alphaMem=%.2f, "+
+			"cpuScore=%.2f, memScore=%.2f, finalScore=%.4f",
+		pod.Name,
+		nodeInfo.Node().Name,
+		requestedCpuUtil,
+		requestedMemUtil,
+		runTimeCpuUtil,
+		runTimeMemUtil,
+		smoothedCpuUtil,
+		smoothedMemUtil,
+		betaCpu,
+		betaMem,
+		effectiveCpuUtil,
+		effectiveMemUtil,
+		cpuMismatch,
+		memMismatch,
+		projectedCpuUtil,
+		projectedMemUtil,
+		alphaCpu,
+		alphaMem,
+		cpuScore,
+		memScore,
+		finalScore,
 	)
 
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)

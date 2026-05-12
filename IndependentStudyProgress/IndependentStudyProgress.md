@@ -8,6 +8,7 @@
 - Implemented an adaptive runtime-aware bin packing algorithm that uses smoothed runtime metrics from the metrics server, and dynamically adjusts the weight given to runtime metrics based on the mismatch between request-based and runtime-based utilization. The algorithm also uses projected utilization to make future-aware scheduling decisions, and applies penalties to nodes that are already under high runtime pressure.
 - Deployed a burst of pods with fixed resource requests to test the adaptive runtime-aware bin packing algorithm. The results showed that the scheduler preferred packing on the most utilized node while avoiding overloading it, and then moved to the second best node, which is the expected behavior. When the burst was memory heavy, the scheduler was more conservative in packing on the most utilized node and preferred to spread the pods more evenly across nodes, which is also the expected behavior given that memory pressure is more dangerous than CPU pressure.
 - Identified a problem with the use of smoothed runtime values in calculating resource utilization mismatch, which can lead to suboptimal scheduling decisions during fast bursts of pods or when there are sudden changes in node behavior. Handled this by introducing a new parameter `beta` to control the effectiveResourceUtilization used in the calculation of mismatch, and by adjusting the algorithm to bridge the gap between raw and smoothed metrics. This allows the scheduler to adapt more quickly to changes in node behavior while still benefiting from the stability of smoothed metrics.
+- Changed the penality calculation to be based on projected resource utilization instead of effective resource utilization, to make it future-aware and prevent overloading nodes with the placement of new pods. Also introduced a penality factor to scale the penality based on how close the projected utilization is to the threshold, to prevent the penality from exceeding the score.
 
 ### Testing methodology:
 #### Static Pod testing:
@@ -728,17 +729,7 @@ spec:
 ```
 
 ## Next Steps:
-- Staged arrivals
-
-| Deployment | Requests (CPU / Mem) | Actual Usage | Pattern |
-|---|---|---|---|
-| over-prov-cpu | 3000m / 512Mi | ~100m / ~50Mi | Over-provisioned CPU |
-| over-prov-mem | 500m / 2Gi | ~100m / ~200Mi | Over-provisioned Memory |
-| cpu-matched | 2000m / 256Mi | ~2000m / ~10Mi | CPU well-matched |
-| mem-matched | 200m / 1Gi | ~200m / ~900Mi | Memory well-matched |
-| cpu-hungry | 500m / 256Mi | ~2000m / ~10Mi | Under-provisioned CPU (bursts past request) |
-| mem-hungry | 200m / 512Mi | ~200m / ~1.5Gi | Under-provisioned Memory (bursts past request) |
-
+- RL/ML can be used to adjust the thresholds and weights dynamically.
 - Read Borg design paper to understand the inspiration behind Kubernetes scheduling.
 - Validate against kube-scheduler 
   - pod placement distribution by node
