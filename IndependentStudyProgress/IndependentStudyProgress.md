@@ -704,29 +704,43 @@ spec:
     - This is because the penality is based on effectiveResourceUtil, which is a blend of smoothed and raw metrics.
     - It has to be based on projectedResourceUtil, which is the future view of the node's resource utilization after placing the pod, and not on the current view of the node's resource utilization.
 - Penality can also be a continious function instead of a step function, which would provide a smoother penalty curve as the projected utilization approaches the threshold, rather than a hard cutoff. This would allow for more nuanced scheduling decisions, and prevent abrupt changes in scheduling behavior when the projected utilization crosses the threshold.
-- To prevent penality from exceeding the score, we can introduce a penality factor that scales the penality based on how close the projected utilization is to the threshold.
-- The penalty now means: "reduce this node's score by up to 100% depending on how overloaded it would become", rather than a fixed value subtracted blindly.
+- It is to be noted that this algorithm tries to bin-pack CPU more aggressively and be a little conservative with memory. Hence, to prevent scheduling on nodes which have larger bin-packing score advantage even with penality, but are in danger zone due to memory pressure, tiered scoring is adopted.
+- The idea here is any below-threshold projectedMemoryUtil node always beats any above-threshold node. 
+- When projectedMemoryUtil is greater than the threshold, which is a hyperparameter set at 0.9, the final score is always within the range of [0, 0.5]. In othercase, the final score is within the range of [0.5, 1], which means that any node with projectedMemoryUtil above 0.9 can never have a higher score than any node with projectedMemoryUtil below 0.9, regardless of their CPU scores or penality.
+- The penality and weighted metrics are used to drive scheduling within their respective tiers, but the memory threshold creates a hard boundary between the two tiers, ensuring that nodes with dangerously high projected memory utilization are always ranked lower than those with safer memory levels, even if they have lower penality.
+- The three zone design:
+  - Zone 1: projectedMemUtil <= 0.7 (free bin-packing, with CPU penality if any)
+  - Zone 2: 0.7 < projectedMemUtil < 0.9 (conservative bin-packing, with higher penality for CPU and memory)
+  - Zone 3: projectedMemUtil >= 0.9 (strictly avoid, dropping score to the bottom tier regardless of CPU score or penality)
+- Zone 2 gives the scheduler a smooth gradient of discouragement before the cliff. Without it, a node at 0.89 projectedmemUtil gets treated identically to one at 0.5 - which would be wrong.
+
 ```go
 	wCpu := 0.6
 	wMem := 0.4
-	weightedScore := wCpu*cpuScore + wMem*memScore
+	// Design choise to keep wCpu + wMem = 1, so that all scores doesn't exceed 1, which is improtant
+	// for this algorithm to work as expected.
 
-	// Penality for projected utilization above a threshold, to avoid scheduling on nodes that are likely to become overloaded.
-	cpuPenality := 0.0
+	cpuPenalityFactor := 0.0
+	memPenalityFactor := 0.0
 	if projectedCpuUtil > 0.8 {
-		cpuPenality = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
+		cpuPenalityFactor = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
 	}
-	memPenality := 0.0
-	if projectedMemUtil > 0.8 {
-		memPenality = (projectedMemUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.8 to 1.0
-		// CPU is slastic vs memory is conservative.
+	if projectedMemUtil > 0.75 && projectedMemUtil < 0.9 {
+		// Memory is more of a hard constraint, so we start applying penality earlier at 70% projected utilization.
+		memPenalityFactor = (projectedMemUtil - 0.75) / 0.15 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.75 to 0.9
 	}
 
-	penalityFactor := clamp((1-wCpu)*cpuPenality+(1-wMem)*memPenality, 0, 1) // Overall penality factor based on CPU and memory penality, weighted by their importance in the score.
-	// penality is higher for memory because memory pressure can lead to OOM kills, which is more disruptive than CPU contention in many cases.
-
-	finalScore := clamp(weightedScore*(1-penalityFactor), 0, 1)
+	finalScore := 0.0
+	if projectedMemUtil >= 0.9 { //Critical memory threshold
+		memPenality := (projectedMemUtil - 0.9) / 0.1 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.9 to 1.0
+		finalScore = 0.5 * clamp(1.0-memPenality, 0, 1)
+		//Memory safe bin-packing, which never  exceeds 0.5 score if memory is projected to be above 90% utilization, regardless of CPU score.
+	} else {
+		penalisedScore := wCpu*cpuScore*(1-cpuPenalityFactor) + wMem*memScore*(1-memPenalityFactor)
+		finalScore = 0.5 + 0.5*clamp(penalisedScore, 0, 1)
+	}
 ```
+###### Refer to `Experiments/staged-interleaved-15.md` for the experiment details and results of the above manifests when they are deployed with an interleaved arrival pattern. The results show that the scheduler is not blindly packing on the most utilized node, and is taking into account the projected memory utilization to avoid overloading nodes with high memory pressure, which is the expected behavior given the design of the algorithm. Effect of tired scoring and penality can be oberved as expected in this experiment.
 
 ## Next Steps:
 - RL/ML can be used to adjust the thresholds and weights dynamically.

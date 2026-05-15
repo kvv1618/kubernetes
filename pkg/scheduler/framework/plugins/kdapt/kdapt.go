@@ -119,7 +119,7 @@ func (k *Kdapt) collectMetrics(
 	ctx context.Context,
 	metricsClient *metricsclient.Clientset,
 ) (map[string]NodeRuntimeMetrics, error) {
-	ema := 0.3 // Exponential Moving Average, considering 30% new runtime values and 70% old/hostoric values.
+	ema := 0.4 // Exponential Moving Average, considering 40% new runtime values and 60% old/hostoric values.
 	list, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -225,37 +225,42 @@ func (k *Kdapt) Score(
 	// Score using projectedUtil vs runtimeUtil - estimate placement quality
 	cpuScore := (1-alphaCpu)*projectedCpuUtil + alphaCpu*effectiveCpuUtil
 	memScore := (1-alphaMem)*projectedMemUtil + alphaMem*effectiveMemUtil
+	// Convex combination of projected and effective utilization keeps
+	// the score between 0 and 1, while allowing it to reflect both the current state and the projected impact of placing the pod on the node.
 
 	wCpu := 0.6
 	wMem := 0.4
-	// Design choise to keep wCpu + wMem = 1, so that weightedScore doesn't exceed 1
+	// Design choise to keep wCpu + wMem = 1, so that all scores doesn't exceed 1, which is improtant
+	// for this algorithm to work as expected.
 
 	cpuPenalityFactor := 0.0
+	memPenalityFactor := 0.0
 	if projectedCpuUtil > 0.8 {
 		cpuPenalityFactor = (projectedCpuUtil - 0.8) / 0.2 // Linear penality from 0 to 1 as projectedCpuUtil goes from 0.8 to 1.0
 	}
+	if projectedMemUtil > 0.75 && projectedMemUtil < 0.9 {
+		// Memory is more of a hard constraint, so we start applying penality earlier at 70% projected utilization.
+		memPenalityFactor = (projectedMemUtil - 0.75) / 0.15 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.75 to 0.9
+	}
 
 	finalScore := 0.0
-	if projectedMemUtil > 0.9 {
+	if projectedMemUtil >= 0.9 { //Critical memory threshold
 		memPenality := (projectedMemUtil - 0.9) / 0.1 // Linear penality from 0 to 1 as projectedMemUtil goes from 0.9 to 1.0
 		finalScore = 0.5 * clamp(1.0-memPenality, 0, 1)
-		//Memory safe bin-packing, whih cnever exceeds 0.5 score if memory is projected to be above 90% utilization, regardless of CPU score.
+		//Memory safe bin-packing, which never  exceeds 0.5 score if memory is projected to be above 90% utilization, regardless of CPU score.
 	} else {
-		penalisedScore := wCpu*cpuScore*(1-cpuPenalityFactor) + wMem*memScore // Apply CPU penality to the CPU score.
-		finalScore = 0.5 * clamp(penalisedScore, 0, 1)
-		// CPU is elastic, so we allow higher CPU utilization but apply a penality factor to the score as projected CPU utilization approaches 100%.
+		penalisedScore := wCpu*cpuScore*(1-cpuPenalityFactor) + wMem*memScore*(1-memPenalityFactor)
+		finalScore = 0.5 + 0.5*clamp(penalisedScore, 0, 1)
 	}
 
 	klog.Infof(
-		"pod=%s, node=%s, requestedCpuUtil=%.2f, requestedMemUtil=%.2f, "+
-			"runTimeCpuUtil=%.2f, runTimeMemUtil=%.2f, "+
-			"smoothedCpuUtil=%.2f, smoothedMemUtil=%.2f, "+
-			"betaCpu=%.2f, betaMem=%.2f, "+
-			"effectiveCpuUtil=%.2f, effectiveMemUtil=%.2f, "+
-			"cpuMismatch=%.2f, memMismatch=%.2f, "+
-			"projectedCpuUtil=%.2f, projectedMemUtil=%.2f, "+
-			"alphaCpu=%.2f, alphaMem=%.2f, "+
-			"cpuScore=%.2f, memScore=%.2f, finalScore=%.4f",
+		"pod=%s, node=%s, requestedCpuUtil=%.2f, requestedMemUtil=%.2f,"+
+			"runTimeCpuUtil=%.2f, runTimeMemUtil=%.2f, smoothedCpuUtil=%.2f,"+
+			"smoothedMemUtil=%.2f, betaCpu=%.2f, betaMem=%.2f, effectiveCpuUtil=%.2f,"+
+			"effectiveMemUtil=%.2f, cpuMismatch=%.2f, memMismatch=%.2f,"+
+			"projectedCpuUtil=%.2f, projectedMemUtil=%.2f, alphaCpu=%.2f,"+
+			"alphaMem=%.2f, cpuScore=%.2f, memScore=%.2f, finalScore=%.4f,"+
+			"cpuPenalityFactor=%.2f, memPenalityFactor=%.2f",
 		pod.Name,
 		nodeInfo.Node().Name,
 		requestedCpuUtil,
@@ -277,6 +282,8 @@ func (k *Kdapt) Score(
 		cpuScore,
 		memScore,
 		finalScore,
+		cpuPenalityFactor,
+		memPenalityFactor,
 	)
 
 	return int64(finalScore * float64(fwk.MaxNodeScore)), fwk.NewStatus(fwk.Success)
